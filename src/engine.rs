@@ -5,7 +5,7 @@ use float_ord::FloatOrd;
 use fnv::{FnvHashMap, FnvHashSet};
 
 use crate::aggregator::{AggregateOperations, AverageAggregate, CovarianceAggregate, VarianceAggregate};
-use crate::event::{ArithmeticOperator, BoolOperator, Event, EventExpression, EventId, EventQuery, ValueExpression};
+use crate::event::{ArithmeticOperator, BoolOperator, Event, EventExpression, EventId, EventOutputName, EventQuery, ValueExpression};
 use crate::metrics::Metrics;
 
 use crate::model::{EventResult, MetricId, TimeInterval, TimePoint, Value, ValueId};
@@ -165,7 +165,7 @@ impl EventEngine {
     fn compile_output(&mut self,
                       context: &CompileEventContext,
                       value_generators: &mut Vec<(ValueId, Vec<MetricId>)>,
-                      outputs: Vec<(String, EventExpression)>) -> EventResult<Vec<(String, CompiledEventExpression)>> {
+                      outputs: Vec<(EventOutputName, EventExpression)>) -> EventResult<Vec<(EventOutputName, CompiledEventExpression)>> {
         let mut compiled_output = Vec::new();
         for (name, expression) in outputs {
             compiled_output.push((name, self.compile_expression(context, value_generators, expression)?));
@@ -248,10 +248,10 @@ impl EventEngine {
         value_id
     }
 
-    pub fn handle_values<F: Fn(EventId, Vec<(&String, Value)>)>(&mut self,
-                                                                time: TimePoint,
-                                                                metrics: &Metrics,
-                                                                on_event: F) {
+    pub fn handle_values<F: Fn(EventId, Vec<(String, Value)>)>(&mut self,
+                                                               time: TimePoint,
+                                                               metrics: &Metrics,
+                                                               on_event: F) {
         let mut values_to_compute = FnvHashSet::default();
         for metric in metrics.keys() {
             if let Some(generators) = self.value_generators_for_metric.get(&metric) {
@@ -276,7 +276,7 @@ impl EventEngine {
                 if accept {
                     on_event(
                         event.id,
-                        self.evaluate_outputs(&values, &event.outputs).collect()
+                        self.evaluate_outputs(&event, &values).collect()
                     );
                 }
             }
@@ -307,11 +307,19 @@ impl EventEngine {
     }
 
     fn evaluate_outputs<'a>(&'a self,
-                            values: &'a Values,
-                            outputs: &'a Vec<(String, CompiledEventExpression)>) -> impl Iterator<Item=(&'a String, Value)> + 'a {
-        outputs
+                            event: &'a CompiledEvent,
+                            values: &'a Values) -> impl Iterator<Item=(String, Value)> + 'a {
+        event.outputs
             .iter()
-            .map(|(name, expression)| self.evaluate_expression(values, expression).map(|value| (name, value)))
+            .map(|(name, expression)| {
+                let name = match name {
+                    EventOutputName::String(str) => str.clone(),
+                    EventOutputName::IndependentMetricName => self.metric_id_to_name_mapping[&event.independent_metric].clone(),
+                    EventOutputName::DependentMetricName => self.metric_id_to_name_mapping[&event.dependent_metric].clone(),
+                };
+
+                self.evaluate_expression(values, expression).map(|value| (name, value))
+            })
             .flatten()
     }
 
@@ -381,7 +389,7 @@ struct CompiledEvent {
     independent_metric: MetricId,
     dependent_metric: MetricId,
     query: CompiledEventQuery,
-    outputs: Vec<(String, CompiledEventExpression)>
+    outputs: Vec<(EventOutputName, CompiledEventExpression)>
 }
 
 #[derive(Debug)]
@@ -526,15 +534,29 @@ fn test_event_engine1() {
                 )
             },
             outputs: vec![
-                ("x".to_owned(), EventExpression::Average { value: ValueExpression::IndependentMetric, interval: TimeInterval::Seconds(10.0) }),
-                ("y".to_owned(), EventExpression::Average { value: ValueExpression::DependentMetric, interval: TimeInterval::Seconds(10.0) })
+                (
+                    EventOutputName::IndependentMetricName,
+                    EventExpression::Average { value: ValueExpression::IndependentMetric, interval: TimeInterval::Seconds(10.0) }
+                ),
+                (
+                    EventOutputName::DependentMetricName,
+                    EventExpression::Average { value: ValueExpression::DependentMetric, interval: TimeInterval::Seconds(10.0) }
+                ),
+                (
+                    EventOutputName::String("cov".to_owned()),
+                    EventExpression::Covariance {
+                        left: ValueExpression::IndependentMetric,
+                        right: ValueExpression::DependentMetric,
+                        interval: TimeInterval::Seconds(10.0)
+                    }
+                )
             ]
         }
     ).unwrap();
 
     println!();
 
-    let on_event = |event_index, outputs: Vec<(&String, Value)>| {
+    let on_event = |event_index, outputs: Vec<(String, Value)>| {
         let mut output_string = String::new();
         let mut is_first = true;
         for (name, value) in outputs {
@@ -544,7 +566,7 @@ fn test_event_engine1() {
                 is_first = false;
             }
 
-            output_string += name;
+            output_string += &name;
             output_string += "=";
             output_string += &value.to_string();
         }

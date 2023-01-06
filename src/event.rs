@@ -11,13 +11,15 @@ impl Display for EventId {
     }
 }
 
+#[derive(Debug)]
 pub struct Event {
     pub independent_metric: MetricId,
     pub dependent_metric: MetricId,
     pub query: EventQuery,
-    pub outputs: Vec<(String, EventExpression)>
+    pub outputs: Vec<(EventOutputName, EventExpression)>
 }
 
+#[derive(Debug)]
 pub enum EventQuery {
     Expression(EventExpression),
     Bool { left: Box<EventQuery>, right: Box<EventQuery>, operation: BoolOperator },
@@ -25,6 +27,7 @@ pub enum EventQuery {
     Or { left: Box<EventQuery>, right: Box<EventQuery> }
 }
 
+#[derive(Debug)]
 pub enum EventExpression {
     Value(ValueExpression),
     Average { value: ValueExpression, interval: TimeInterval },
@@ -33,11 +36,19 @@ pub enum EventExpression {
     Arithmetic { left: Box<EventExpression>, right: Box<EventExpression>, operation: ArithmeticOperator },
 }
 
+#[derive(Debug)]
 pub enum ValueExpression {
     IndependentMetric,
     DependentMetric,
     Constant(f64),
     Arithmetic { left: Box<ValueExpression>, right: Box<ValueExpression>, operation: ArithmeticOperator },
+}
+
+#[derive(Debug)]
+pub enum EventOutputName {
+    String(String),
+    IndependentMetricName,
+    DependentMetricName
 }
 
 #[derive(Debug)]
