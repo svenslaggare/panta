@@ -1,0 +1,9 @@
+[package]
+name = "panta"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+assert_approx_eq = "1"
+fnv = "1"
+float-ord = "0.3"
