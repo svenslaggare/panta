@@ -1,3 +1,4 @@
+use std::fmt::{Display, Formatter};
 use std::time::Duration;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -40,6 +41,15 @@ impl Value {
             Some(*value)
         } else {
             None
+        }
+    }
+}
+
+impl Display for Value {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Value::Float(value) => write!(f, "{}", value),
+            Value::Bool(value) => write!(f, "{}", value),
         }
     }
 }

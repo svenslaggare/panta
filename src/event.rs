@@ -5,7 +5,8 @@ use crate::model::{MetricId, TimeInterval, Value};
 pub struct Event {
     pub independent_metric: MetricId,
     pub dependent_metric: MetricId,
-    pub query: EventQuery
+    pub query: EventQuery,
+    pub outputs: Vec<(String, EventExpression)>
 }
 
 pub enum EventQuery {
@@ -17,9 +18,9 @@ pub enum EventQuery {
 
 pub enum EventExpression {
     Value(ValueExpression),
-    Average { value: ValueExpression, time_interval: TimeInterval },
-    Variance { value: ValueExpression, time_interval: TimeInterval },
-    Covariance { left: ValueExpression, right: ValueExpression, time_interval: TimeInterval },
+    Average { value: ValueExpression, interval: TimeInterval },
+    Variance { value: ValueExpression, interval: TimeInterval },
+    Covariance { left: ValueExpression, right: ValueExpression, interval: TimeInterval },
     Arithmetic { left: Box<EventExpression>, right: Box<EventExpression>, operation: ArithmeticOperator },
 }
 
