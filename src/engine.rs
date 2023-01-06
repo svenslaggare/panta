@@ -270,22 +270,6 @@ impl EventEngine {
                         event_index,
                         self.evaluate_outputs(&values, &event.outputs).collect()
                     );
-
-                    // let mut output_string = String::new();
-                    // let mut is_first = true;
-                    // for (name, value) in self.evaluate_outputs(&values, &event.outputs) {
-                    //     if !is_first {
-                    //         output_string += ", ";
-                    //     } else {
-                    //         is_first = false;
-                    //     }
-                    //
-                    //     output_string += name;
-                    //     output_string += "=";
-                    //     output_string += &value.to_string();
-                    // }
-                    //
-                    // println!("Event generated for #{}, {}", event_index, output_string);
                 }
             }
         }
