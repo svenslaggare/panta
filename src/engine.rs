@@ -5,13 +5,15 @@ use float_ord::FloatOrd;
 use fnv::{FnvHashMap, FnvHashSet};
 
 use crate::aggregator::{AggregateOperations, AverageAggregate, CovarianceAggregate, VarianceAggregate};
-use crate::event::{ArithmeticOperator, BoolOperator, Event, EventExpression, EventQuery, ValueExpression};
+use crate::event::{ArithmeticOperator, BoolOperator, Event, EventExpression, EventId, EventQuery, ValueExpression};
 
 use crate::model::{ EventResult, MetricId, TimeInterval, Value, ValueId};
 
 pub struct EventEngine {
     next_metric_id: MetricId,
+    next_event_id: EventId,
     next_value_id: ValueId,
+
     metrics: FnvHashMap<String, MetricId>,
     metric_id_to_name_mapping: FnvHashMap<MetricId, String>,
 
@@ -27,6 +29,7 @@ impl EventEngine {
     pub fn new() -> EventEngine {
         EventEngine {
             next_metric_id: MetricId(1),
+            next_event_id: EventId(1),
             next_value_id: ValueId(1),
 
             metrics: FnvHashMap::default(),
@@ -52,7 +55,7 @@ impl EventEngine {
             })
     }
 
-    pub fn add_event(&mut self, event: Event) -> EventResult<()> {
+    pub fn add_event(&mut self, event: Event) -> EventResult<EventId> {
         let mut value_generators = Vec::new();
 
         let context = CompileEventContext::new(&event);
@@ -70,8 +73,12 @@ impl EventEngine {
         )?;
         println!("{:#?}", outputs);
 
+        let event_id = self.next_event_id;
+        self.next_event_id.0 += 1;
+
         self.events.push(
             CompiledEvent {
+                id: event_id,
                 independent_metric: event.independent_metric,
                 dependent_metric: event.dependent_metric,
                 query,
@@ -102,7 +109,7 @@ impl EventEngine {
             }
         }
 
-        Ok(())
+        Ok(event_id)
     }
 
     fn compile_query(&mut self,
@@ -240,10 +247,10 @@ impl EventEngine {
         value_id
     }
 
-    pub fn handle_values<F: Fn(usize, Vec<(&String, Value)>)>(&mut self,
-                                                              time: Instant,
-                                                              metrics: &FnvHashMap<MetricId, f64>,
-                                                              on_event: F) {
+    pub fn handle_values<F: Fn(EventId, Vec<(&String, Value)>)>(&mut self,
+                                                                time: Instant,
+                                                                metrics: &FnvHashMap<MetricId, f64>,
+                                                                on_event: F) {
         let mut values_to_compute = FnvHashSet::default();
         for metric in metrics.keys() {
             if let Some(generators) = self.value_generators_for_metric.get(&metric) {
@@ -261,13 +268,13 @@ impl EventEngine {
 
         self.aggregators.handle_values(time, &values);
 
-        for (event_index, event) in self.events.iter().enumerate() {
+        for event in self.events.iter() {
             let query = &event.query;
-            println!("Event #{}: {}", event_index, self.query_to_string(&values, query).unwrap_or("N/A".to_owned()));
+            println!("Event #{}: {}", event.id, self.query_to_string(&values, query).unwrap_or("N/A".to_owned()));
             if let Some(accept) = self.evaluate_query(&values, query).map(|value| value.bool()).flatten() {
                 if accept {
                     on_event(
-                        event_index,
+                        event.id,
                         self.evaluate_outputs(&values, &event.outputs).collect()
                     );
                 }
@@ -369,6 +376,7 @@ type Values = FnvHashMap<ValueId, f64>;
 
 #[derive(Debug)]
 struct CompiledEvent {
+    id: EventId,
     independent_metric: MetricId,
     dependent_metric: MetricId,
     query: CompiledEventQuery,

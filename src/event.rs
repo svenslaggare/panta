@@ -2,6 +2,15 @@ use std::fmt::{Display, Formatter};
 
 use crate::model::{MetricId, TimeInterval, Value};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct EventId(pub u64);
+
+impl Display for EventId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 pub struct Event {
     pub independent_metric: MetricId,
     pub dependent_metric: MetricId,
