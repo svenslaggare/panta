@@ -1,12 +1,12 @@
 use std::collections::{VecDeque};
 use std::ops::Add;
-use std::time::{Duration, Instant};
+use std::time::{Duration};
 
 use fnv::FnvHashMap;
 
 use assert_approx_eq::assert_approx_eq;
 
-use crate::model::{TimeInterval, ValueId};
+use crate::model::{TimeInterval, TimePoint, ValueId};
 
 pub struct AggregateOperations {
     next_aggregate_id: AggregateId,
@@ -74,7 +74,7 @@ impl AggregateOperations {
     }
 
     pub fn handle_values(&mut self,
-                         time: Instant,
+                         time: TimePoint,
                          values: &FnvHashMap<ValueId, f64>) {
         for (operation, aggregate) in &self.single_operations {
             match operation {
@@ -158,7 +158,7 @@ enum DualAggregateOperation {
 
 pub struct SumAggregator {
     interval: Duration,
-    values: VecDeque<(Instant, f64)>,
+    values: VecDeque<(TimePoint, f64)>,
     sum: f64
 }
 
@@ -171,7 +171,7 @@ impl SumAggregator {
         }
     }
 
-    pub fn add(&mut self, time: Instant, value: f64) {
+    pub fn add(&mut self, time: TimePoint, value: f64) {
         self.values.push_back((time, value));
         self.sum += value;
 
@@ -211,7 +211,7 @@ impl SumAggregator {
 #[test]
 fn test_aggregate_operations_average1() {
     let mut operations = AggregateOperations::new();
-    let t0 = Instant::now();
+    let t0 = TimePoint::now();
 
     let x = ValueId(0);
     let average_x = operations.add_average(x, TimeInterval::Seconds(10.0));
@@ -237,7 +237,7 @@ fn test_aggregate_operations_average1() {
 #[test]
 fn test_aggregate_operations_average2() {
     let mut operations = AggregateOperations::new();
-    let t0 = Instant::now();
+    let t0 = TimePoint::now();
 
     let x = ValueId(0);
     let average = operations.add_average(x, TimeInterval::Seconds(10.0));
@@ -264,7 +264,7 @@ fn test_aggregate_operations_average2() {
 #[test]
 fn test_aggregate_operations_variance1() {
     let mut operations = AggregateOperations::new();
-    let t0 = Instant::now();
+    let t0 = TimePoint::now();
 
     let x = ValueId(0);
     let variance = operations.add_variance(x, TimeInterval::Seconds(10.0));
@@ -290,7 +290,7 @@ fn test_aggregate_operations_variance1() {
 #[test]
 fn test_aggregate_operations_covariance1() {
     let mut operations = AggregateOperations::new();
-    let t0 = Instant::now();
+    let t0 = TimePoint::now();
 
     let x = ValueId(0);
     let y = ValueId(1);
@@ -319,7 +319,7 @@ fn test_aggregate_operations_covariance1() {
 #[test]
 fn test_aggregate_operations_covariance2() {
     let mut operations = AggregateOperations::new();
-    let t0 = Instant::now();
+    let t0 = TimePoint::now();
 
     let x = ValueId(0);
     let y = ValueId(1);

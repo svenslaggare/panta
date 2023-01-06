@@ -1,5 +1,7 @@
 use std::fmt::{Display, Formatter};
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+pub type TimePoint = Instant;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ValueId(pub u64);

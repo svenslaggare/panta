@@ -1,5 +1,5 @@
 use std::ops::Add;
-use std::time::{Duration, Instant};
+use std::time::{Duration};
 
 use float_ord::FloatOrd;
 use fnv::{FnvHashMap, FnvHashSet};
@@ -7,7 +7,7 @@ use fnv::{FnvHashMap, FnvHashSet};
 use crate::aggregator::{AggregateOperations, AverageAggregate, CovarianceAggregate, VarianceAggregate};
 use crate::event::{ArithmeticOperator, BoolOperator, Event, EventExpression, EventId, EventQuery, ValueExpression};
 
-use crate::model::{ EventResult, MetricId, TimeInterval, Value, ValueId};
+use crate::model::{EventResult, MetricId, TimeInterval, TimePoint, Value, ValueId};
 
 pub struct EventEngine {
     next_metric_id: MetricId,
@@ -248,7 +248,7 @@ impl EventEngine {
     }
 
     pub fn handle_values<F: Fn(EventId, Vec<(&String, Value)>)>(&mut self,
-                                                                time: Instant,
+                                                                time: TimePoint,
                                                                 metrics: &FnvHashMap<MetricId, f64>,
                                                                 on_event: F) {
         let mut values_to_compute = FnvHashSet::default();
@@ -551,7 +551,7 @@ fn test_event_engine1() {
         println!("Event generated for #{}, {}", event_index, output_string);
     };
 
-    let t0 = Instant::now();
+    let t0 = TimePoint::now();
     let mut values = FnvHashMap::default();
     values.insert(x, 1.0);
     values.insert(y, 10.0);
