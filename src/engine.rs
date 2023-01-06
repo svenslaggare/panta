@@ -6,6 +6,7 @@ use fnv::{FnvHashMap, FnvHashSet};
 
 use crate::aggregator::{AggregateOperations, AverageAggregate, CovarianceAggregate, VarianceAggregate};
 use crate::event::{ArithmeticOperator, BoolOperator, Event, EventExpression, EventId, EventQuery, ValueExpression};
+use crate::metrics::Metrics;
 
 use crate::model::{EventResult, MetricId, TimeInterval, TimePoint, Value, ValueId};
 
@@ -249,7 +250,7 @@ impl EventEngine {
 
     pub fn handle_values<F: Fn(EventId, Vec<(&String, Value)>)>(&mut self,
                                                                 time: TimePoint,
-                                                                metrics: &FnvHashMap<MetricId, f64>,
+                                                                metrics: &Metrics,
                                                                 on_event: F) {
         let mut values_to_compute = FnvHashSet::default();
         for metric in metrics.keys() {
@@ -450,7 +451,7 @@ impl CompiledValueExpression {
         }
     }
 
-    pub fn evaluate(&self, metrics: &FnvHashMap<MetricId, f64>) -> Option<f64> {
+    pub fn evaluate(&self, metrics: &Metrics) -> Option<f64> {
         match self {
             CompiledValueExpression::Metric(metric) => metrics.get(metric).cloned(),
             CompiledValueExpression::Constant(value) => Some(value.0),
@@ -551,21 +552,20 @@ fn test_event_engine1() {
         println!("Event generated for #{}, {}", event_index, output_string);
     };
 
+    let mut values = Metrics::new(TimeInterval::Minutes(1.0));
+
     let t0 = TimePoint::now();
-    let mut values = FnvHashMap::default();
-    values.insert(x, 1.0);
-    values.insert(y, 10.0);
+    values.insert(t0, x, 1.0);
+    values.insert(t0, y, 10.0);
     engine.handle_values(t0, &values, on_event);
 
     let t1 = t0.add(Duration::from_secs_f64(2.0));
-    let mut values = FnvHashMap::default();
-    values.insert(x, 2.0);
-    values.insert(y, 20.0);
+    values.insert(t1, x, 2.0);
+    values.insert(t1, y, 20.0);
     engine.handle_values(t1, &values, on_event);
 
-    let t1 = t0.add(Duration::from_secs_f64(4.0));
-    let mut values = FnvHashMap::default();
-    values.insert(x, 4.0);
-    values.insert(y, 40.0);
-    engine.handle_values(t1, &values, on_event);
+    let t2 = t0.add(Duration::from_secs_f64(4.0));
+    values.insert(t2, x, 4.0);
+    values.insert(t2, y, 40.0);
+    engine.handle_values(t2, &values, on_event);
 }
