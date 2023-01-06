@@ -101,7 +101,11 @@ impl EventEngine {
                      query: EventQuery) -> EventResult<CompiledEventQuery> {
         match query {
             EventQuery::Expression(expression) => {
-                self.compile_expression(context, value_generators, expression)
+                Ok(
+                    CompiledEventQuery::Expression(
+                        self.compile_expression(context, value_generators, expression)?
+                    )
+                )
             }
             EventQuery::Bool { left, right, operation } => {
                 let left = self.compile_query(context, value_generators, *left)?;
@@ -143,21 +147,21 @@ impl EventEngine {
     fn compile_expression(&mut self,
                           context: &CompileEventQueryContext,
                           value_generators: &mut Vec<(ValueId, Vec<MetricId>)>,
-                          expression: EventExpression) -> EventResult<CompiledEventQuery> {
+                          expression: EventExpression) -> EventResult<CompiledEventExpression> {
         match expression {
             EventExpression::Value(value) => {
                 let value_id = self.compile_value(context, value, value_generators)?;
-                Ok(CompiledEventQuery::Value(value_id))
+                Ok(CompiledEventExpression::Value(value_id))
             }
             EventExpression::Average { value, time_interval } => {
                 let value_id = self.compile_value(context, value, value_generators)?;
                 let aggregate = self.aggregators.add_average(value_id, time_interval);
-                Ok(CompiledEventQuery::Average(aggregate))
+                Ok(CompiledEventExpression::Average(aggregate))
             }
             EventExpression::Variance { value, time_interval } => {
                 let value_id = self.compile_value(context, value, value_generators)?;
                 let aggregate = self.aggregators.add_variance(value_id, time_interval);
-                Ok(CompiledEventQuery::Variance(aggregate))
+                Ok(CompiledEventExpression::Variance(aggregate))
             }
             EventExpression::Covariance { left, right, time_interval } => {
                 let mut left_context = CompiledValueExpressionContext::new(context);
@@ -170,14 +174,14 @@ impl EventEngine {
                 let right_value_id = self.add_value(right_context.used_metrics, right, value_generators);
 
                 let aggregate = self.aggregators.add_covariance(left_value_id, right_value_id, time_interval);
-                Ok(CompiledEventQuery::Covariance(aggregate))
+                Ok(CompiledEventExpression::Covariance(aggregate))
             }
             EventExpression::Arithmetic { left, right, operation } => {
                 let left = self.compile_expression(context, value_generators, *left)?;
                 let right = self.compile_expression(context, value_generators, *right)?;
 
                 Ok(
-                    CompiledEventQuery::Arithmetic {
+                    CompiledEventExpression::Arithmetic {
                         left: Box::new(left),
                         right: Box::new(right),
                         operation
@@ -259,14 +263,8 @@ impl EventEngine {
                       values: &FnvHashMap<ValueId, f64>,
                       query: &CompiledEventQuery) -> Option<Value> {
         match query {
-            CompiledEventQuery::Value(value) => Some(Value::Float(values.get(&value).cloned()?)),
-            CompiledEventQuery::Average(aggregate) => Some(Value::Float(self.aggregators.average(aggregate)?)),
-            CompiledEventQuery::Variance(aggregate) => Some(Value::Float(self.aggregators.variance(aggregate)?)),
-            CompiledEventQuery::Covariance(aggregate) => Some(Value::Float(self.aggregators.covariance(aggregate)?)),
-            CompiledEventQuery::Arithmetic { left, right, operation } => {
-                let left = self.evaluate_query(values, left)?.float()?;
-                let right = self.evaluate_query(values, right)?.float()?;
-                Some(Value::Float(operation.evaluate(left, right)))
+            CompiledEventQuery::Expression(expression) => {
+                self.evaluate_expression(values, expression)
             }
             CompiledEventQuery::Bool { left, right, operation } => {
                 let left = self.evaluate_query(values, left)?;
@@ -282,18 +280,28 @@ impl EventEngine {
         }
     }
 
+    fn evaluate_expression(&self,
+                           values: &FnvHashMap<ValueId, f64>,
+                           expression: &CompiledEventExpression) -> Option<Value> {
+        match expression {
+            CompiledEventExpression::Value(value) => Some(Value::Float(values.get(&value).cloned()?)),
+            CompiledEventExpression::Average(aggregate) => Some(Value::Float(self.aggregators.average(aggregate)?)),
+            CompiledEventExpression::Variance(aggregate) => Some(Value::Float(self.aggregators.variance(aggregate)?)),
+            CompiledEventExpression::Covariance(aggregate) => Some(Value::Float(self.aggregators.covariance(aggregate)?)),
+            CompiledEventExpression::Arithmetic { left, right, operation } => {
+                let left = self.evaluate_expression(values, left)?.float()?;
+                let right = self.evaluate_expression(values, right)?.float()?;
+                Some(Value::Float(operation.evaluate(left, right)))
+            }
+        }
+    }
+
     fn query_to_string(&self,
                        values: &FnvHashMap<ValueId, f64>,
                        query: &CompiledEventQuery) -> Option<String> {
         match query {
-            CompiledEventQuery::Value(value) => Some(format!("Value({})", values.get(&value).cloned()?)),
-            CompiledEventQuery::Average(aggregate) => Some(format!("Avg({})", self.aggregators.average(aggregate)?)),
-            CompiledEventQuery::Variance(aggregate) => Some(format!("Var({})", self.aggregators.variance(aggregate)?)),
-            CompiledEventQuery::Covariance(aggregate) => Some(format!("Cov({})", self.aggregators.covariance(aggregate)?)),
-            CompiledEventQuery::Arithmetic { left, right, operation } => {
-                let left = self.query_to_string(values, left)?;
-                let right = self.query_to_string(values, right)?;
-                Some(format!("{} {} {}", left, operation, right))
+            CompiledEventQuery::Expression(expression) => {
+                Some(self.expression_to_string(values, expression)?)
             }
             CompiledEventQuery::Bool { left, right, operation } => {
                 let left = self.query_to_string(values, left)?;
@@ -312,6 +320,22 @@ impl EventEngine {
             }
         }
     }
+
+    fn expression_to_string(&self,
+                            values: &FnvHashMap<ValueId, f64>,
+                            expression: &CompiledEventExpression) -> Option<String> {
+        match expression {
+            CompiledEventExpression::Value(value) => Some(format!("Value({})", values.get(&value).cloned()?)),
+            CompiledEventExpression::Average(aggregate) => Some(format!("Avg({})", self.aggregators.average(aggregate)?)),
+            CompiledEventExpression::Variance(aggregate) => Some(format!("Var({})", self.aggregators.variance(aggregate)?)),
+            CompiledEventExpression::Covariance(aggregate) => Some(format!("Cov({})", self.aggregators.covariance(aggregate)?)),
+            CompiledEventExpression::Arithmetic { left, right, operation } => {
+                let left = self.expression_to_string(values, left)?;
+                let right = self.expression_to_string(values, right)?;
+                Some(format!("{} {} {}", left, operation, right))
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -323,11 +347,7 @@ struct CompiledEvent {
 
 #[derive(Debug)]
 enum CompiledEventQuery {
-    Value(ValueId),
-    Average(AverageAggregate),
-    Variance(VarianceAggregate),
-    Covariance(CovarianceAggregate),
-    Arithmetic { left: Box<CompiledEventQuery>, right: Box<CompiledEventQuery>, operation: ArithmeticOperator },
+    Expression(CompiledEventExpression),
     Bool { left: Box<CompiledEventQuery>, right: Box<CompiledEventQuery>, operation: BoolOperator },
     And { left: Box<CompiledEventQuery>, right: Box<CompiledEventQuery> },
     Or { left: Box<CompiledEventQuery>, right: Box<CompiledEventQuery> }
@@ -345,6 +365,15 @@ impl CompileEventQueryContext {
             dependent_metric: event.dependent_metric
         }
     }
+}
+
+#[derive(Debug)]
+enum CompiledEventExpression {
+    Value(ValueId),
+    Average(AverageAggregate),
+    Variance(VarianceAggregate),
+    Covariance(CovarianceAggregate),
+    Arithmetic { left: Box<CompiledEventExpression>, right: Box<CompiledEventExpression>, operation: ArithmeticOperator },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
