@@ -240,9 +240,10 @@ impl EventEngine {
         value_id
     }
 
-    pub fn handle_values(&mut self,
-                         time: Instant,
-                         metrics: &FnvHashMap<MetricId, f64>) {
+    pub fn handle_values<F: Fn(usize, Vec<(&String, Value)>)>(&mut self,
+                                                              time: Instant,
+                                                              metrics: &FnvHashMap<MetricId, f64>,
+                                                              on_event: F) {
         let mut values_to_compute = FnvHashSet::default();
         for metric in metrics.keys() {
             if let Some(generators) = self.value_generators_for_metric.get(&metric) {
@@ -265,21 +266,26 @@ impl EventEngine {
             println!("Event #{}: {}", event_index, self.query_to_string(&values, query).unwrap_or("N/A".to_owned()));
             if let Some(accept) = self.evaluate_query(&values, query).map(|value| value.bool()).flatten() {
                 if accept {
-                    let mut output_string = String::new();
-                    let mut is_first = true;
-                    for (name, value) in self.evaluate_outputs(&values, &event.outputs) {
-                        if !is_first {
-                            output_string += ", ";
-                        } else {
-                            is_first = false;
-                        }
+                    on_event(
+                        event_index,
+                        self.evaluate_outputs(&values, &event.outputs).collect()
+                    );
 
-                        output_string += name;
-                        output_string += "=";
-                        output_string += &value.to_string();
-                    }
-
-                    println!("Event generated for #{}, {}", event_index, output_string);
+                    // let mut output_string = String::new();
+                    // let mut is_first = true;
+                    // for (name, value) in self.evaluate_outputs(&values, &event.outputs) {
+                    //     if !is_first {
+                    //         output_string += ", ";
+                    //     } else {
+                    //         is_first = false;
+                    //     }
+                    //
+                    //     output_string += name;
+                    //     output_string += "=";
+                    //     output_string += &value.to_string();
+                    // }
+                    //
+                    // println!("Event generated for #{}, {}", event_index, output_string);
                 }
             }
         }
@@ -535,21 +541,39 @@ fn test_event_engine1() {
 
     println!();
 
+    let on_event = |event_index, outputs: Vec<(&String, Value)>| {
+        let mut output_string = String::new();
+        let mut is_first = true;
+        for (name, value) in outputs {
+            if !is_first {
+                output_string += ", ";
+            } else {
+                is_first = false;
+            }
+
+            output_string += name;
+            output_string += "=";
+            output_string += &value.to_string();
+        }
+
+        println!("Event generated for #{}, {}", event_index, output_string);
+    };
+
     let t0 = Instant::now();
     let mut values = FnvHashMap::default();
     values.insert(x, 1.0);
     values.insert(y, 10.0);
-    engine.handle_values(t0, &values);
+    engine.handle_values(t0, &values, on_event);
 
     let t1 = t0.add(Duration::from_secs_f64(2.0));
     let mut values = FnvHashMap::default();
     values.insert(x, 2.0);
     values.insert(y, 20.0);
-    engine.handle_values(t1, &values);
+    engine.handle_values(t1, &values, on_event);
 
     let t1 = t0.add(Duration::from_secs_f64(4.0));
     let mut values = FnvHashMap::default();
     values.insert(x, 4.0);
     values.insert(y, 40.0);
-    engine.handle_values(t1, &values);
+    engine.handle_values(t1, &values, on_event);
 }
