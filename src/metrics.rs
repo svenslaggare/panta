@@ -1,4 +1,3 @@
-use std::ops::Index;
 use std::time::Duration;
 use fnv::FnvHashMap;
 
@@ -39,6 +38,7 @@ impl MetricDefinitions {
     }
 }
 
+#[derive(Debug)]
 pub struct MetricValues {
     max_keep: Duration,
     values: FnvHashMap<MetricId, (TimePoint, f64)>
@@ -64,15 +64,11 @@ impl MetricValues {
         self.values.keys()
     }
 
+    pub fn iter(&self) -> impl Iterator<Item=(MetricId, f64)> + '_ {
+        self.values.iter().map(|(id, (_, value))| (*id, *value))
+    }
+
     pub fn clear_old(&mut self, time: TimePoint) {
         self.values.retain(|_, (value_time, _)| time.duration_since(*value_time) < self.max_keep)
-    }
-}
-
-impl Index<&MetricId> for MetricValues {
-    type Output = f64;
-
-    fn index(&self, index: &MetricId) -> &Self::Output {
-        self.get(index).unwrap()
     }
 }

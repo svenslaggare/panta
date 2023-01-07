@@ -56,8 +56,9 @@ impl Display for Value {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum EventError {
+    FailedToCollectSystemMetric(std::io::Error),
     FailedToCompileMetric
 }
 
