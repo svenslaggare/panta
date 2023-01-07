@@ -7,3 +7,5 @@ edition = "2021"
 assert_approx_eq = "1"
 fnv = "1"
 float-ord = "0.3"
+
+libc = "0.2"

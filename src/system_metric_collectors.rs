@@ -1,4 +1,9 @@
+use std::ffi::CString;
+use std::io::ErrorKind;
+use std::mem::MaybeUninit;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::time::Instant;
 use fnv::FnvHashMap;
 
 use crate::metrics::{MetricDefinitions, MetricValues};
@@ -18,7 +23,7 @@ impl SystemMetricCollector for CpuUsageCollector {
         let mut prev_values = FnvHashMap::default();
         let content = CpuUsageCollector::get_cpu_content()?;
         for (core_name, (total, idle)) in CpuUsageCollector::get_cpu_values(&content) {
-            let metric_id = metric_definitions.define(core_name);
+            let metric_id = metric_definitions.define(&format!("cpu_usage:{}", core_name));
             prev_values.insert(core_name.to_owned(), (metric_id, total, idle));
         }
 
@@ -74,7 +79,7 @@ impl CpuUsageCollector {
     }
 }
 
-struct MemoryUsageCollector {
+pub struct MemoryUsageCollector {
     total_memory_metric: MetricId,
     used_memory_metric: MetricId,
     used_memory_ratio_metric: MetricId
@@ -118,6 +123,221 @@ impl SystemMetricCollector for MemoryUsageCollector {
     }
 }
 
+pub struct DiskStatsCollector {
+    prev_values: FnvHashMap<String, (DiskStatsMetrics, DiskStats)>,
+    prev_measurement_time: Instant
+}
+
+impl SystemMetricCollector for DiskStatsCollector {
+    fn new(metric_definitions: &mut MetricDefinitions) -> EventResult<DiskStatsCollector> {
+        let mut prev_values = FnvHashMap::default();
+
+        let measurement_time = Instant::now();
+        let content = DiskStatsCollector::get_disk_content()?;
+        for (disk, disk_stats) in DiskStatsCollector::get_disk_stats_values(&content) {
+            let disk_stats_metrics = DiskStatsMetrics {
+                read_operations_metric: metric_definitions.define(&format!("disk_read_operations:{}", disk)),
+                read_bytes_metric: metric_definitions.define(&format!("disk_read_bytes:{}", disk)),
+                write_operations_metric: metric_definitions.define(&format!("disk_write_operations:{}", disk)),
+                write_bytes_metric: metric_definitions.define(&format!("disk_write_bytes:{}", disk))
+            };
+            
+            prev_values.insert(disk.to_owned(), (disk_stats_metrics, disk_stats));
+        }
+
+        Ok(
+            DiskStatsCollector {
+                prev_measurement_time: measurement_time,
+                prev_values
+            }
+        )
+    }
+
+    fn collect(&mut self, time: TimePoint, metrics: &mut MetricValues) -> EventResult<()> {
+        let scale = 1.0 / (1024.0 * 1024.0);
+
+        let measurement_time = Instant::now();
+        let elapsed_time = (measurement_time - self.prev_measurement_time).as_secs_f64();
+        let content = DiskStatsCollector::get_disk_content()?;
+        for (disk, disk_stats) in DiskStatsCollector::get_disk_stats_values(&content) {
+            if let Some((disk_stats_metrics, prev_disk_stats)) = self.prev_values.get_mut(disk) {
+                let diff_disk_stats = disk_stats.diff(prev_disk_stats);
+                metrics.insert(time, disk_stats_metrics.read_operations_metric, diff_disk_stats.read_ios as f64 / elapsed_time);
+                metrics.insert(time, disk_stats_metrics.write_operations_metric, diff_disk_stats.write_ios as f64 / elapsed_time);
+                metrics.insert(time, disk_stats_metrics.read_bytes_metric, scale * (diff_disk_stats.read_bytes as f64 / elapsed_time));
+                metrics.insert(time, disk_stats_metrics.write_bytes_metric, scale * (diff_disk_stats.write_bytes as f64 / elapsed_time));
+
+                *prev_disk_stats = disk_stats;
+                self.prev_measurement_time = measurement_time;
+            }
+        }
+
+        Ok(())
+    }
+
+}
+
+impl DiskStatsCollector {
+    fn get_disk_stats_values<'a>(content: &'a str) -> impl Iterator<Item=(&'a str, DiskStats)> + 'a {
+        content
+            .lines()
+            .map(|line| {
+                let parts = line.split(" ").filter(|p| !p.is_empty()).skip(2).collect::<Vec<_>>();
+                let block_size = 512;
+
+                if parts[0].starts_with("loop") || parts[0].starts_with("dm") {
+                    return None;
+                }
+
+                Some(
+                    (
+                        parts[0],
+                        DiskStats {
+                            read_ios: i64::from_str(parts[1]).unwrap(),
+                            read_bytes: i64::from_str(parts[3]).unwrap() * block_size,
+                            write_ios: i64::from_str(parts[5]).unwrap(),
+                            write_bytes: i64::from_str(parts[7]).unwrap() * block_size
+                        }
+                    )
+                )
+            })
+            .flatten()
+    }
+
+    fn get_disk_content() -> EventResult<String> {
+        std::fs::read_to_string("/proc/diskstats")
+            .map_err(|err| EventError::FailedToCollectSystemMetric(err))
+    }
+}
+
+struct DiskStatsMetrics {
+    read_operations_metric: MetricId,
+    read_bytes_metric: MetricId,
+    write_operations_metric: MetricId,
+    write_bytes_metric: MetricId,
+}
+
+struct DiskStats {
+    read_ios: i64,
+    read_bytes: i64,
+    write_ios: i64,
+    write_bytes: i64
+}
+
+impl DiskStats {
+    pub fn diff(&self, other: &DiskStats) -> DiskStats {
+        DiskStats {
+            read_ios: self.read_ios - other.read_ios,
+            read_bytes: self.read_bytes - other.read_bytes,
+            write_ios: self.write_ios - other.write_ios,
+            write_bytes: self.write_bytes - other.write_bytes
+        }
+    }
+}
+
+pub struct DiskUsageCollector {
+    disk_metrics: FnvHashMap<String, DiskUsageEntry>
+}
+
+impl SystemMetricCollector for DiskUsageCollector {
+    fn new(metric_definitions: &mut MetricDefinitions) -> EventResult<DiskUsageCollector> {
+        let mut disk_metrics = FnvHashMap::default();
+        let parents = get_block_device_parents().map_err(|err| EventError::FailedToCollectSystemMetric(err))?;
+
+        let content = std::fs::read_to_string("/proc/self/mountinfo").map_err(|err| EventError::FailedToCollectSystemMetric(err))?;
+        for line in content.lines() {
+            let parts = line.split(" ").collect::<Vec<_>>();
+            let mount = parts[4];
+            let filesystem_type = parts[8];
+            let device_id = parts[2];
+
+            match filesystem_type {
+                "ext4" => {}
+                _ => { continue; }
+            }
+
+            let block_device = Path::new("/sys/dev/block").join(device_id);
+            let mut block_device = block_device.canonicalize().map_err(|err| EventError::FailedToCollectSystemMetric(err))?;
+
+            // LVM device, use parent to find disk identifier
+            if block_device.to_str().unwrap().contains("virtual") {
+                if let Some(parent) = parents.get(&block_device) {
+                    block_device = parent.clone();
+                }
+            }
+
+            let disk = block_device.iter().last().unwrap().to_str().unwrap();
+
+            disk_metrics.insert(
+                disk.to_owned(),
+                DiskUsageEntry {
+                    mount: CString::new(mount).unwrap(),
+                    total_disk_metric: metric_definitions.define(&format!("total_disk:{}", disk)),
+                    used_disk_metric: metric_definitions.define(&format!("used_disk:{}", disk)),
+                    used_disk_ratio_metric: metric_definitions.define(&format!("used_disk_ratio:{}", disk)),
+                    free_disk_metric: metric_definitions.define(&format!("free_disk:{}", disk))
+                }
+            );
+        }
+
+        Ok(
+            DiskUsageCollector {
+                disk_metrics
+            }
+        )
+    }
+
+    fn collect(&mut self, time: TimePoint, metrics: &mut MetricValues) -> EventResult<()> {
+        let scale = 1.0 / (1024.0 * 1024.0 * 1024.0);
+
+        for entry in self.disk_metrics.values() {
+            unsafe {
+                let mut statfs_result = MaybeUninit::<libc::statfs64>::zeroed();
+                if libc::statfs64(entry.mount.as_ptr(), statfs_result.as_mut_ptr()) != 0 {
+                    return Err(EventError::FailedToCollectSystemMetric(std::io::Error::new(ErrorKind::Other, "statfs64 failed")));
+                }
+                let statfs_result = statfs_result.assume_init();
+
+                let block_size = statfs_result.f_frsize as u64;
+                let total_disk = block_size * statfs_result.f_blocks;
+                let free_disk = block_size * statfs_result.f_bavail;
+                let used_disk = total_disk - free_disk;
+
+                metrics.insert(time, entry.total_disk_metric, scale * total_disk as f64);
+                metrics.insert(time, entry.used_disk_metric, scale * used_disk as f64);
+                metrics.insert(time, entry.used_disk_ratio_metric, used_disk as f64 / total_disk as f64);
+                metrics.insert(time, entry.free_disk_metric, scale * free_disk as f64);
+            }
+        }
+
+        Ok(())
+    }
+}
+
+fn get_block_device_parents() -> std::io::Result<FnvHashMap<PathBuf, PathBuf>> {
+    let mut parents = FnvHashMap::default();
+    for parent in std::fs::read_dir("/sys/dev/block")? {
+        let parent = parent?;
+        let parent = parent.path().canonicalize()?;
+
+        for child in std::fs::read_dir(parent.join("holders"))? {
+            let child = child?;
+            let child = child.path().canonicalize()?;
+            parents.insert(child, parent.clone());
+        }
+    }
+
+    Ok(parents)
+}
+
+pub struct DiskUsageEntry {
+    mount: CString,
+    total_disk_metric: MetricId,
+    used_disk_metric: MetricId,
+    used_disk_ratio_metric: MetricId,
+    free_disk_metric: MetricId
+}
+
 #[test]
 fn test_cpu_collector1() {
     let mut metric_definitions = MetricDefinitions::new();
@@ -132,7 +352,7 @@ fn test_cpu_collector1() {
         println!("{}: {}", metric_definitions.get_name(metric).unwrap(), value)
     }
 
-    assert_ne!(Some(&0.0), metrics.get(&metric_definitions.get_id("cpu").unwrap()));
+    assert_ne!(Some(&0.0), metrics.get(&metric_definitions.get_id("cpu_usage:cpu").unwrap()));
 }
 
 #[test]
@@ -148,4 +368,32 @@ fn test_memory_collector1() {
     }
 
     assert_ne!(Some(&0.0), metrics.get(&metric_definitions.get_id("used_memory_ratio").unwrap()));
+}
+
+#[test]
+fn test_disk_stats_collector1() {
+    let mut metric_definitions = MetricDefinitions::new();
+    let mut disk_stats_collector = DiskStatsCollector::new(&mut metric_definitions).unwrap();
+
+    std::thread::sleep(std::time::Duration::from_secs_f64(1.0));
+
+    let mut metrics = MetricValues::new(TimeInterval::Minutes(1.0));
+    disk_stats_collector.collect(TimePoint::now(), &mut metrics).unwrap();
+
+    for (metric, value) in metrics.iter() {
+        println!("{}: {}", metric_definitions.get_name(metric).unwrap(), value)
+    }
+}
+
+#[test]
+fn test_disk_usage_collector1() {
+    let mut metric_definitions = MetricDefinitions::new();
+    let mut disk_usage_collector = DiskUsageCollector::new(&mut metric_definitions).unwrap();
+
+    let mut metrics = MetricValues::new(TimeInterval::Minutes(1.0));
+    disk_usage_collector.collect(TimePoint::now(), &mut metrics).unwrap();
+
+    for (metric, value) in metrics.iter() {
+        println!("{}: {}", metric_definitions.get_name(metric).unwrap(), value)
+    }
 }
