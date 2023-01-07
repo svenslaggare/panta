@@ -14,6 +14,33 @@ pub trait SystemMetricCollector {
     fn collect(&mut self, time: TimePoint, metrics: &mut MetricValues) -> EventResult<()>;
 }
 
+pub struct SystemMetricsCollector {
+    collectors: Vec<Box<dyn SystemMetricCollector>>
+}
+
+impl SystemMetricsCollector {
+    pub fn new(metric_definitions: &mut MetricDefinitions) -> EventResult<SystemMetricsCollector> {
+        Ok(
+            SystemMetricsCollector {
+                collectors: vec![
+                    Box::new(CpuUsageCollector::new(metric_definitions)?),
+                    Box::new(MemoryUsageCollector::new(metric_definitions)?),
+                    Box::new(DiskUsageCollector::new(metric_definitions)?),
+                    Box::new(DiskIOStatsCollector::new(metric_definitions)?)
+                ]
+            }
+        )
+    }
+
+    pub fn collect(&mut self, time: TimePoint, metrics: &mut MetricValues) -> EventResult<()> {
+        for collector in &mut self.collectors {
+            collector.collect(time, metrics)?;
+        }
+
+        Ok(())
+    }
+}
+
 pub struct CpuUsageCollector {
     prev_values: FnvHashMap<String, (MetricId, i64, i64)>
 }
@@ -339,6 +366,21 @@ pub struct DiskUsageEntry {
 }
 
 #[test]
+fn test_system_metrics_collector1() {
+    let mut metric_definitions = MetricDefinitions::new();
+    let mut system_metrics_collector = SystemMetricsCollector::new(&mut metric_definitions).unwrap();
+
+    std::thread::sleep(std::time::Duration::from_secs_f64(0.2));
+
+    let mut metrics = MetricValues::new(TimeInterval::Minutes(1.0));
+    system_metrics_collector.collect(TimePoint::now(), &mut metrics).unwrap();
+
+    for (metric, value) in metrics.iter() {
+        println!("{}: {}", metric_definitions.get_name(metric).unwrap(), value)
+    }
+}
+
+#[test]
 fn test_cpu_collector1() {
     let mut metric_definitions = MetricDefinitions::new();
     let mut cpu_usage_collector = CpuUsageCollector::new(&mut metric_definitions).unwrap();
@@ -375,7 +417,7 @@ fn test_disk_io_stats_collector1() {
     let mut metric_definitions = MetricDefinitions::new();
     let mut disk_io_stats_collector = DiskIOStatsCollector::new(&mut metric_definitions).unwrap();
 
-    std::thread::sleep(std::time::Duration::from_secs_f64(1.0));
+    std::thread::sleep(std::time::Duration::from_secs_f64(0.2));
 
     let mut metrics = MetricValues::new(TimeInterval::Minutes(1.0));
     disk_io_stats_collector.collect(TimePoint::now(), &mut metrics).unwrap();
