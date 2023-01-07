@@ -6,17 +6,13 @@ use fnv::{FnvHashMap, FnvHashSet};
 
 use crate::aggregator::{AggregateOperations, AverageAggregate, CovarianceAggregate, VarianceAggregate};
 use crate::event::{ArithmeticOperator, BoolOperator, Event, EventExpression, EventId, EventOutputName, EventQuery, ValueExpression};
-use crate::metrics::Metrics;
+use crate::metrics::{MetricDefinitions, MetricValues};
 
 use crate::model::{EventResult, MetricId, TimeInterval, TimePoint, Value, ValueId};
 
 pub struct EventEngine {
-    next_metric_id: MetricId,
     next_event_id: EventId,
     next_value_id: ValueId,
-
-    metrics: FnvHashMap<String, MetricId>,
-    metric_id_to_name_mapping: FnvHashMap<MetricId, String>,
 
     value_generators: FnvHashMap<ValueId, CompiledValueExpression>,
     expression_to_value_mapping: FnvHashMap<CompiledValueExpression, ValueId>,
@@ -29,12 +25,8 @@ pub struct EventEngine {
 impl EventEngine {
     pub fn new() -> EventEngine {
         EventEngine {
-            next_metric_id: MetricId(1),
             next_event_id: EventId(1),
             next_value_id: ValueId(1),
-
-            metrics: FnvHashMap::default(),
-            metric_id_to_name_mapping: FnvHashMap::default(),
 
             value_generators: FnvHashMap::default(),
             expression_to_value_mapping: FnvHashMap::default(),
@@ -43,17 +35,6 @@ impl EventEngine {
 
             events: Vec::new()
         }
-    }
-
-    pub fn define_metric(&mut self, name: &str) -> MetricId {
-        *self.metrics
-            .entry(name.to_owned())
-            .or_insert_with(|| {
-                let metric_id = self.next_metric_id;
-                self.metric_id_to_name_mapping.insert(metric_id, name.to_owned());
-                self.next_metric_id.0 += 1;
-                metric_id
-            })
     }
 
     pub fn add_event(&mut self, event: Event) -> EventResult<EventId> {
@@ -249,8 +230,9 @@ impl EventEngine {
     }
 
     pub fn handle_values<F: Fn(EventId, Vec<(String, Value)>)>(&mut self,
+                                                               metric_definitions: &MetricDefinitions,
                                                                time: TimePoint,
-                                                               metrics: &Metrics,
+                                                               metrics: &MetricValues,
                                                                on_event: F) {
         let mut values_to_compute = FnvHashSet::default();
         for metric in metrics.keys() {
@@ -276,7 +258,7 @@ impl EventEngine {
                 if accept {
                     on_event(
                         event.id,
-                        self.evaluate_outputs(&event, &values).collect()
+                        self.evaluate_outputs(metric_definitions, &event, &values).collect()
                     );
                 }
             }
@@ -307,6 +289,7 @@ impl EventEngine {
     }
 
     fn evaluate_outputs<'a>(&'a self,
+                            metric_definitions: &'a MetricDefinitions,
                             event: &'a CompiledEvent,
                             values: &'a Values) -> impl Iterator<Item=(String, Value)> + 'a {
         event.outputs
@@ -314,8 +297,8 @@ impl EventEngine {
             .map(|(name, expression)| {
                 let name = match name {
                     EventOutputName::String(str) => str.clone(),
-                    EventOutputName::IndependentMetricName => self.metric_id_to_name_mapping[&event.independent_metric].clone(),
-                    EventOutputName::DependentMetricName => self.metric_id_to_name_mapping[&event.dependent_metric].clone(),
+                    EventOutputName::IndependentMetricName => metric_definitions.get_name(event.independent_metric).unwrap().to_owned(),
+                    EventOutputName::DependentMetricName => metric_definitions.get_name(event.dependent_metric).unwrap().to_owned(),
                 };
 
                 self.evaluate_expression(values, expression).map(|value| (name, value))
@@ -459,7 +442,7 @@ impl CompiledValueExpression {
         }
     }
 
-    pub fn evaluate(&self, metrics: &Metrics) -> Option<f64> {
+    pub fn evaluate(&self, metrics: &MetricValues) -> Option<f64> {
         match self {
             CompiledValueExpression::Metric(metric) => metrics.get(metric).cloned(),
             CompiledValueExpression::Constant(value) => Some(value.0),
@@ -490,9 +473,12 @@ impl CompiledValueExpressionContext {
 
 #[test]
 fn test_event_engine1() {
+    let mut metric_definitions = MetricDefinitions::new();
+    let x = metric_definitions.define("x");
+    let y = metric_definitions.define("y");
+
     let mut engine = EventEngine::new();
-    let x = engine.define_metric("x");
-    let y = engine.define_metric("y");
+
 
     engine.add_event(
         Event {
@@ -574,20 +560,20 @@ fn test_event_engine1() {
         println!("Event generated for #{}, {}", event_index, output_string);
     };
 
-    let mut values = Metrics::new(TimeInterval::Minutes(1.0));
+    let mut values = MetricValues::new(TimeInterval::Minutes(1.0));
 
     let t0 = TimePoint::now();
     values.insert(t0, x, 1.0);
     values.insert(t0, y, 10.0);
-    engine.handle_values(t0, &values, on_event);
+    engine.handle_values(&metric_definitions, t0, &values, on_event);
 
     let t1 = t0.add(Duration::from_secs_f64(2.0));
     values.insert(t1, x, 2.0);
     values.insert(t1, y, 20.0);
-    engine.handle_values(t1, &values, on_event);
+    engine.handle_values(&metric_definitions, t1, &values, on_event);
 
     let t2 = t0.add(Duration::from_secs_f64(4.0));
     values.insert(t2, x, 4.0);
     values.insert(t2, y, 40.0);
-    engine.handle_values(t2, &values, on_event);
+    engine.handle_values(&metric_definitions, t2, &values, on_event);
 }

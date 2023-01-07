@@ -4,14 +4,49 @@ use fnv::FnvHashMap;
 
 use crate::model::{MetricId, TimeInterval, TimePoint};
 
-pub struct Metrics {
+pub struct MetricDefinitions {
+    next_metric_id: MetricId,
+    metrics: FnvHashMap<String, MetricId>,
+    metric_id_to_name_mapping: FnvHashMap<MetricId, String>,
+}
+
+impl MetricDefinitions {
+    pub fn new() -> MetricDefinitions {
+        MetricDefinitions {
+            next_metric_id: MetricId(1),
+            metrics: FnvHashMap::default(),
+            metric_id_to_name_mapping: FnvHashMap::default()
+        }
+    }
+
+    pub fn define(&mut self, name: &str) -> MetricId {
+        *self.metrics
+            .entry(name.to_owned())
+            .or_insert_with(|| {
+                let metric_id = self.next_metric_id;
+                self.metric_id_to_name_mapping.insert(metric_id, name.to_owned());
+                self.next_metric_id.0 += 1;
+                metric_id
+            })
+    }
+
+    pub fn get_id(&self, name: &str) -> Option<MetricId> {
+        self.metrics.get(name).cloned()
+    }
+
+    pub fn get_name(&self, id: MetricId) -> Option<&str> {
+        self.metric_id_to_name_mapping.get(&id).map(|x| x.as_str())
+    }
+}
+
+pub struct MetricValues {
     max_keep: Duration,
     values: FnvHashMap<MetricId, (TimePoint, f64)>
 }
 
-impl Metrics {
-    pub fn new(max_keep: TimeInterval) -> Metrics {
-        Metrics {
+impl MetricValues {
+    pub fn new(max_keep: TimeInterval) -> MetricValues {
+        MetricValues {
             max_keep: max_keep.duration(),
             values: FnvHashMap::default()
         }
@@ -34,7 +69,7 @@ impl Metrics {
     }
 }
 
-impl Index<&MetricId> for Metrics {
+impl Index<&MetricId> for MetricValues {
     type Output = f64;
 
     fn index(&self, index: &MetricId) -> &Self::Output {
