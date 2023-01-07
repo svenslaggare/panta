@@ -123,18 +123,18 @@ impl SystemMetricCollector for MemoryUsageCollector {
     }
 }
 
-pub struct DiskStatsCollector {
+pub struct DiskIOStatsCollector {
     prev_values: FnvHashMap<String, (DiskStatsMetrics, DiskStats)>,
     prev_measurement_time: Instant
 }
 
-impl SystemMetricCollector for DiskStatsCollector {
-    fn new(metric_definitions: &mut MetricDefinitions) -> EventResult<DiskStatsCollector> {
+impl SystemMetricCollector for DiskIOStatsCollector {
+    fn new(metric_definitions: &mut MetricDefinitions) -> EventResult<DiskIOStatsCollector> {
         let mut prev_values = FnvHashMap::default();
 
         let measurement_time = Instant::now();
-        let content = DiskStatsCollector::get_disk_content()?;
-        for (disk, disk_stats) in DiskStatsCollector::get_disk_stats_values(&content) {
+        let content = DiskIOStatsCollector::get_disk_content()?;
+        for (disk, disk_stats) in DiskIOStatsCollector::get_disk_stats_values(&content) {
             let disk_stats_metrics = DiskStatsMetrics {
                 read_operations_metric: metric_definitions.define(&format!("disk_read_operations:{}", disk)),
                 read_bytes_metric: metric_definitions.define(&format!("disk_read_bytes:{}", disk)),
@@ -146,7 +146,7 @@ impl SystemMetricCollector for DiskStatsCollector {
         }
 
         Ok(
-            DiskStatsCollector {
+            DiskIOStatsCollector {
                 prev_measurement_time: measurement_time,
                 prev_values
             }
@@ -158,8 +158,8 @@ impl SystemMetricCollector for DiskStatsCollector {
 
         let measurement_time = Instant::now();
         let elapsed_time = (measurement_time - self.prev_measurement_time).as_secs_f64();
-        let content = DiskStatsCollector::get_disk_content()?;
-        for (disk, disk_stats) in DiskStatsCollector::get_disk_stats_values(&content) {
+        let content = DiskIOStatsCollector::get_disk_content()?;
+        for (disk, disk_stats) in DiskIOStatsCollector::get_disk_stats_values(&content) {
             if let Some((disk_stats_metrics, prev_disk_stats)) = self.prev_values.get_mut(disk) {
                 let diff_disk_stats = disk_stats.diff(prev_disk_stats);
                 metrics.insert(time, disk_stats_metrics.read_operations_metric, diff_disk_stats.read_ios as f64 / elapsed_time);
@@ -177,7 +177,7 @@ impl SystemMetricCollector for DiskStatsCollector {
 
 }
 
-impl DiskStatsCollector {
+impl DiskIOStatsCollector {
     fn get_disk_stats_values<'a>(content: &'a str) -> impl Iterator<Item=(&'a str, DiskStats)> + 'a {
         content
             .lines()
@@ -371,14 +371,14 @@ fn test_memory_collector1() {
 }
 
 #[test]
-fn test_disk_stats_collector1() {
+fn test_disk_io_stats_collector1() {
     let mut metric_definitions = MetricDefinitions::new();
-    let mut disk_stats_collector = DiskStatsCollector::new(&mut metric_definitions).unwrap();
+    let mut disk_io_stats_collector = DiskIOStatsCollector::new(&mut metric_definitions).unwrap();
 
     std::thread::sleep(std::time::Duration::from_secs_f64(1.0));
 
     let mut metrics = MetricValues::new(TimeInterval::Minutes(1.0));
-    disk_stats_collector.collect(TimePoint::now(), &mut metrics).unwrap();
+    disk_io_stats_collector.collect(TimePoint::now(), &mut metrics).unwrap();
 
     for (metric, value) in metrics.iter() {
         println!("{}: {}", metric_definitions.get_name(metric).unwrap(), value)
