@@ -64,7 +64,6 @@ impl RabbitMQStatsCollector {
 
     pub async fn collect(&mut self, time: TimePoint, metrics: &mut MetricValues) -> EventResult<()> {
         let queue_infos = self.collect_all_queue_info().await.map_err(|err| EventError::FailedToCollectRabbitMQMetric(err))?;
-        println!("{:#?}", queue_infos);
 
         for queue_info in queue_infos {
             if let Some(queue_entry) = self.queues.get(&queue_info.name) {

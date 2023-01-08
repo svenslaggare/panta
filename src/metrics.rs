@@ -60,6 +60,10 @@ impl MetricValues {
         self.values.insert(metric, (time, value));
     }
 
+    pub fn extend(&mut self, other: MetricValues) {
+        self.values.extend(other.values.into_iter())
+    }
+
     pub fn get(&self, metric: &MetricId) -> Option<&f64> {
         self.values.get(metric).map(|(_, value)| value)
     }
