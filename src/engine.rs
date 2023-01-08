@@ -1,5 +1,8 @@
+use std::cell::RefCell;
 use std::ops::Add;
+use std::rc::Rc;
 use std::time::{Duration};
+use assert_approx_eq::assert_approx_eq;
 
 use float_ord::FloatOrd;
 use fnv::{FnvHashMap, FnvHashSet};
@@ -255,11 +258,11 @@ impl EventEngine {
         value_id
     }
 
-    pub fn handle_values<F: Fn(EventId, Vec<(String, Value)>)>(&mut self,
-                                                               metric_definitions: &MetricDefinitions,
-                                                               time: TimePoint,
-                                                               metrics: &MetricValues,
-                                                               on_event: F) {
+    pub fn handle_values<F: FnMut(EventId, Vec<(String, Value)>)>(&mut self,
+                                                                  metric_definitions: &MetricDefinitions,
+                                                                  time: TimePoint,
+                                                                  metrics: &MetricValues,
+                                                                  mut on_event: F) {
         let mut values_to_compute = FnvHashSet::default();
         for metric in metrics.keys() {
             if let Some(generators) = self.value_generators_for_metric.get(&metric) {
@@ -608,7 +611,10 @@ fn test_event_engine1() {
 
     println!();
 
+    let events = Rc::new(RefCell::new(Vec::new()));
     let on_event = |event_index, outputs: Vec<(String, Value)>| {
+        events.borrow_mut().push(outputs.clone());
+
         let mut output_string = String::new();
         let mut is_first = true;
         for (name, value) in outputs {
@@ -633,13 +639,32 @@ fn test_event_engine1() {
     values.insert(t0, y, 10.0);
     engine.handle_values(&metric_definitions, t0, &values, on_event);
 
+    assert_eq!(0, events.borrow_mut().len());
+    events.borrow_mut().clear();
+
+
     let t1 = t0.add(Duration::from_secs_f64(2.0));
     values.insert(t1, x, 2.0);
     values.insert(t1, y, 20.0);
     engine.handle_values(&metric_definitions, t1, &values, on_event);
 
+    assert_eq!(1, events.borrow_mut().len());
+    let outputs = events.borrow_mut().remove(0);
+    assert_eq!("x", outputs[0].0); assert_approx_eq!(1.5, outputs[0].1.float().unwrap());
+    assert_eq!("y", outputs[1].0); assert_approx_eq!(15.0, outputs[1].1.float().unwrap());
+    assert_eq!("cov", outputs[2].0); assert_approx_eq!(2.5, outputs[2].1.float().unwrap());
+    events.borrow_mut().clear();
+
+
     let t2 = t0.add(Duration::from_secs_f64(4.0));
     values.insert(t2, x, 4.0);
     values.insert(t2, y, 40.0);
     engine.handle_values(&metric_definitions, t2, &values, on_event);
+
+    assert_eq!(1, events.borrow_mut().len());
+    let outputs = events.borrow_mut().remove(0);
+    assert_eq!("x", outputs[0].0); assert_approx_eq!(2.3333333, outputs[0].1.float().unwrap());
+    assert_eq!("y", outputs[1].0); assert_approx_eq!(23.333333, outputs[1].1.float().unwrap());
+    assert_eq!("cov", outputs[2].0); assert_approx_eq!(15.555555, outputs[2].1.float().unwrap());
+    events.borrow_mut().clear();
 }

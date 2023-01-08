@@ -24,6 +24,7 @@ impl TimeInterval {
     }
 }
 
+#[derive(Debug, Clone)]
 pub enum Value {
     Float(f64),
     Bool(bool)
