@@ -14,7 +14,7 @@ impl Display for EventId {
 #[derive(Debug)]
 pub struct Event {
     pub independent_metric: MetricId,
-    pub dependent_metric: MetricId,
+    pub dependent_metric: Vec<MetricId>,
     pub query: EventQuery,
     pub outputs: Vec<(EventOutputName, EventExpression)>
 }
@@ -47,14 +47,14 @@ pub enum ValueExpression {
     Function { function: Function, arguments: Vec<ValueExpression> }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum EventOutputName {
     String(String),
     IndependentMetricName,
     DependentMetricName
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum BoolOperator {
     Equal,
     NotEqual,
@@ -102,7 +102,7 @@ impl Display for BoolOperator {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ArithmeticOperator {
     Add,
     Subtract,
@@ -132,7 +132,7 @@ impl Display for ArithmeticOperator {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Function {
     Abs,
     Sqrt,

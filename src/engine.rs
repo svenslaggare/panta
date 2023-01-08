@@ -41,66 +41,72 @@ impl EventEngine {
     }
 
     pub fn add_event(&mut self, event: Event) -> EventResult<EventId> {
-        let mut value_generators = Vec::new();
-
-        let context = CompileEventContext::new(&event);
-        let query = self.compile_query(
-            &context,
-            &mut value_generators,
-            event.query
-        )?;
-        println!("{:#?}", query);
-
-        let outputs = self.compile_output(
-            &context,
-            &mut value_generators,
-            event.outputs
-        )?;
-        println!("{:#?}", outputs);
-
         let event_id = self.next_event_id;
-        self.next_event_id.0 += 1;
 
-        self.events.push(
-            CompiledEvent {
-                id: event_id,
+        for dependent_metric in event.dependent_metric {
+            let mut value_generators = Vec::new();
+
+            let context = CompileEventContext {
                 independent_metric: event.independent_metric,
-                dependent_metric: event.dependent_metric,
-                query,
-                outputs
-            }
-        );
+                dependent_metric
+            };
+            
+            let query = self.compile_query(
+                &context,
+                &mut value_generators,
+                &event.query
+            )?;
+            println!("{:#?}", query);
 
-        for (value_id, used_metrics) in value_generators {
-            println!("{:?}: {:?}", self.value_generators[&value_id], used_metrics);
+            let outputs = self.compile_output(
+                &context,
+                &mut value_generators,
+                &event.outputs
+            )?;
+            println!("{:#?}", outputs);
 
-            if !used_metrics.is_empty() {
-                for metric in used_metrics {
+            self.events.push(
+                CompiledEvent {
+                    id: event_id,
+                    independent_metric: event.independent_metric,
+                    dependent_metric,
+                    query,
+                    outputs
+                }
+            );
+
+            for (value_id, used_metrics) in value_generators {
+                println!("{:?}: {:?}", self.value_generators[&value_id], used_metrics);
+
+                if !used_metrics.is_empty() {
+                    for metric in used_metrics {
+                        self.value_generators_for_metric
+                            .entry(metric)
+                            .or_insert_with(|| Vec::new())
+                            .push(value_id);
+                    }
+                } else {
                     self.value_generators_for_metric
-                        .entry(metric)
+                        .entry(event.independent_metric)
+                        .or_insert_with(|| Vec::new())
+                        .push(value_id);
+
+                    self.value_generators_for_metric
+                        .entry(dependent_metric)
                         .or_insert_with(|| Vec::new())
                         .push(value_id);
                 }
-            } else {
-                self.value_generators_for_metric
-                    .entry(event.independent_metric)
-                    .or_insert_with(|| Vec::new())
-                    .push(value_id);
-
-                self.value_generators_for_metric
-                    .entry(event.dependent_metric)
-                    .or_insert_with(|| Vec::new())
-                    .push(value_id);
             }
         }
 
+        self.next_event_id.0 += 1;
         Ok(event_id)
     }
 
     fn compile_query(&mut self,
                      context: &CompileEventContext,
                      value_generators: &mut Vec<(ValueId, Vec<MetricId>)>,
-                     query: EventQuery) -> EventResult<CompiledEventQuery> {
+                     query: &EventQuery) -> EventResult<CompiledEventQuery> {
         match query {
             EventQuery::Expression(expression) => {
                 Ok(
@@ -110,20 +116,20 @@ impl EventEngine {
                 )
             }
             EventQuery::Bool { operator, left, right, } => {
-                let left = self.compile_query(context, value_generators, *left)?;
-                let right = self.compile_query(context, value_generators, *right)?;
+                let left = self.compile_query(context, value_generators, left)?;
+                let right = self.compile_query(context, value_generators, right)?;
 
                 Ok(
                     CompiledEventQuery::Bool {
                         left: Box::new(left),
                         right: Box::new(right),
-                        operator
+                        operator: *operator
                     }
                 )
             }
             EventQuery::And { left, right } => {
-                let left = self.compile_query(context, value_generators, *left)?;
-                let right = self.compile_query(context, value_generators, *right)?;
+                let left = self.compile_query(context, value_generators, left)?;
+                let right = self.compile_query(context, value_generators, right)?;
 
                 Ok(
                     CompiledEventQuery::And {
@@ -133,8 +139,8 @@ impl EventEngine {
                 )
             }
             EventQuery::Or { left, right } => {
-                let left = self.compile_query(context, value_generators, *left)?;
-                let right = self.compile_query(context, value_generators, *right)?;
+                let left = self.compile_query(context, value_generators, left)?;
+                let right = self.compile_query(context, value_generators, right)?;
 
                 Ok(
                     CompiledEventQuery::Or {
@@ -149,10 +155,10 @@ impl EventEngine {
     fn compile_output(&mut self,
                       context: &CompileEventContext,
                       value_generators: &mut Vec<(ValueId, Vec<MetricId>)>,
-                      outputs: Vec<(EventOutputName, EventExpression)>) -> EventResult<Vec<(EventOutputName, CompiledEventExpression)>> {
+                      outputs: &Vec<(EventOutputName, EventExpression)>) -> EventResult<Vec<(EventOutputName, CompiledEventExpression)>> {
         let mut compiled_output = Vec::new();
         for (name, expression) in outputs {
-            compiled_output.push((name, self.compile_expression(context, value_generators, expression)?));
+            compiled_output.push((name.clone(), self.compile_expression(context, value_generators, expression)?));
         }
 
         Ok(compiled_output)
@@ -161,7 +167,7 @@ impl EventEngine {
     fn compile_expression(&mut self,
                           context: &CompileEventContext,
                           value_generators: &mut Vec<(ValueId, Vec<MetricId>)>,
-                          expression: EventExpression) -> EventResult<CompiledEventExpression> {
+                          expression: &EventExpression) -> EventResult<CompiledEventExpression> {
         match expression {
             EventExpression::Value(value) => {
                 let value_id = self.compile_value(context, value, value_generators)?;
@@ -169,12 +175,12 @@ impl EventEngine {
             }
             EventExpression::Average { value, interval } => {
                 let value_id = self.compile_value(context, value, value_generators)?;
-                let aggregate = self.aggregators.add_average(value_id, interval);
+                let aggregate = self.aggregators.add_average(value_id, *interval);
                 Ok(CompiledEventExpression::Average(aggregate))
             }
             EventExpression::Variance { value, interval } => {
                 let value_id = self.compile_value(context, value, value_generators)?;
-                let aggregate = self.aggregators.add_variance(value_id, interval);
+                let aggregate = self.aggregators.add_variance(value_id, *interval);
                 Ok(CompiledEventExpression::Variance(aggregate))
             }
             EventExpression::Covariance { left, right, interval } => {
@@ -187,7 +193,7 @@ impl EventEngine {
                 let left_value_id = self.add_value(left_context.used_metrics, left, value_generators);
                 let right_value_id = self.add_value(right_context.used_metrics, right, value_generators);
 
-                let aggregate = self.aggregators.add_covariance(left_value_id, right_value_id, interval);
+                let aggregate = self.aggregators.add_covariance(left_value_id, right_value_id, *interval);
                 Ok(CompiledEventExpression::Covariance(aggregate))
             }
             EventExpression::Correlation { left, right, interval } => {
@@ -200,18 +206,18 @@ impl EventEngine {
                 let left_value_id = self.add_value(left_context.used_metrics, left, value_generators);
                 let right_value_id = self.add_value(right_context.used_metrics, right, value_generators);
 
-                let aggregate = self.aggregators.add_correlation(left_value_id, right_value_id, interval);
+                let aggregate = self.aggregators.add_correlation(left_value_id, right_value_id, *interval);
                 Ok(CompiledEventExpression::Correlation(aggregate))
             }
             EventExpression::Arithmetic { operator, left, right } => {
-                let left = self.compile_expression(context, value_generators, *left)?;
-                let right = self.compile_expression(context, value_generators, *right)?;
+                let left = self.compile_expression(context, value_generators, left)?;
+                let right = self.compile_expression(context, value_generators, right)?;
 
                 Ok(
                     CompiledEventExpression::Arithmetic {
                         left: Box::new(left),
                         right: Box::new(right),
-                        operator
+                        operator: *operator
                     }
                 )
             }
@@ -223,7 +229,7 @@ impl EventEngine {
 
                 Ok(
                     CompiledEventExpression::Function {
-                        function,
+                        function: *function,
                         arguments: compiled_arguments
                     }
                 )
@@ -233,7 +239,7 @@ impl EventEngine {
 
     fn compile_value(&mut self,
                      context: &CompileEventContext,
-                     value: ValueExpression,
+                     value: &ValueExpression,
                      value_generators: &mut Vec<(ValueId, Vec<MetricId>)>) ->  EventResult<ValueId> {
         let mut context = CompiledValueExpressionContext::new(context);
         let value = CompiledValueExpression::compile(&value, &mut context)?;
@@ -434,15 +440,6 @@ struct CompileEventContext {
     dependent_metric: MetricId
 }
 
-impl CompileEventContext {
-    pub fn new(event: &Event) -> CompileEventContext {
-        CompileEventContext {
-            independent_metric: event.independent_metric,
-            dependent_metric: event.dependent_metric
-        }
-    }
-}
-
 #[derive(Debug)]
 enum CompiledEventExpression {
     Value(ValueId),
@@ -552,7 +549,7 @@ fn test_event_engine1() {
     engine.add_event(
         Event {
             independent_metric: x,
-            dependent_metric: y,
+            dependent_metric: vec![y],
             query: EventQuery::And {
                 left: Box::new(
                     EventQuery::Bool {

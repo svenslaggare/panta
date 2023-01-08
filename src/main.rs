@@ -56,7 +56,7 @@ fn add_events(metric_definitions: &MetricDefinitions, engine: &mut EventEngine) 
     engine.add_event(
         Event {
             independent_metric: metric_definitions.get_id("cpu_usage:all").unwrap(),
-            dependent_metric: metric_definitions.get_id("used_memory").unwrap(),
+            dependent_metric: vec![metric_definitions.get_id("used_memory").unwrap()],
             query: EventQuery::And {
                 left: Box::new(
                     EventQuery::Bool {
