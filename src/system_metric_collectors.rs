@@ -116,8 +116,10 @@ pub struct MemoryUsageCollector {
     total_memory_metric: MetricId,
     used_memory_metric: MetricId,
     used_memory_ratio_metric: MetricId,
+    used_memory_rate_metric: MetricId,
     available_memory_metric: MetricId,
-    available_memory_metric_ratio: MetricId
+    available_memory_metric_ratio: MetricId,
+    prev_memory_usage: Option<(Instant, MemoryUsage)>,
 }
 
 impl SystemMetricCollector for MemoryUsageCollector {
@@ -127,16 +129,42 @@ impl SystemMetricCollector for MemoryUsageCollector {
                 total_memory_metric: metric_definitions.define("total_memory"),
                 used_memory_metric: metric_definitions.define("used_memory"),
                 used_memory_ratio_metric: metric_definitions.define("used_memory_ratio"),
+                used_memory_rate_metric: metric_definitions.define("used_memory_rate"),
                 available_memory_metric: metric_definitions.define("available_memory"),
-                available_memory_metric_ratio: metric_definitions.define("available_memory_ratio")
+                available_memory_metric_ratio: metric_definitions.define("available_memory_ratio"),
+                prev_memory_usage: Some((Instant::now(), MemoryUsageCollector::get_memory_usage()?))
             }
         )
     }
 
     fn collect(&mut self, time: TimePoint, metrics: &mut MetricValues) -> EventResult<()> {
-        let mut total_memory = 0.0;
-        let mut used_memory = 0.0;
-        let mut available_memory = 0.0;
+        let measurement_time = Instant::now();
+        let memory_usage = MemoryUsageCollector::get_memory_usage()?;
+
+        metrics.insert(time, self.total_memory_metric, memory_usage.total_memory);
+        metrics.insert(time, self.used_memory_metric, memory_usage.used_memory);
+        metrics.insert(time, self.used_memory_ratio_metric, memory_usage.used_memory / memory_usage.total_memory);
+        metrics.insert(time, self.available_memory_metric, memory_usage.available_memory);
+        metrics.insert(time, self.available_memory_metric_ratio, memory_usage.available_memory / memory_usage.total_memory);
+
+        if let Some((prev_measurement_time, prev_memory_usage)) = self.prev_memory_usage.as_ref() {
+            let elapsed = (measurement_time - *prev_measurement_time).as_secs_f64();
+            metrics.insert(time, self.used_memory_rate_metric, (memory_usage.used_memory - prev_memory_usage.used_memory) / elapsed);
+        }
+
+        self.prev_memory_usage = Some((measurement_time, memory_usage));
+
+        Ok(())
+    }
+}
+
+impl MemoryUsageCollector {
+    fn get_memory_usage() -> EventResult<MemoryUsage> {
+        let mut memory_usage = MemoryUsage {
+            total_memory: 0.0,
+            used_memory: 0.0,
+            available_memory: 0.0
+        };
 
         for line in std::fs::read_to_string("/proc/meminfo").map_err(|err| EventError::FailedToCollectSystemMetric(err))?.lines() {
             let parts = line.split(":").collect::<Vec<_>>();
@@ -144,24 +172,24 @@ impl SystemMetricCollector for MemoryUsageCollector {
             let value = f64::from_str(parts[1].trim().split(" ").next().unwrap()).unwrap() / 1024.0;
             match name {
                 "MemTotal" => {
-                    total_memory = value;
+                    memory_usage.total_memory = value;
                 }
                 "MemAvailable" => {
-                    available_memory = value;
-                    used_memory = total_memory - available_memory;
+                    memory_usage.available_memory = value;
+                    memory_usage.used_memory = memory_usage.total_memory - memory_usage.available_memory;
                 }
                 _ => {}
             }
         }
 
-        metrics.insert(time, self.total_memory_metric, total_memory);
-        metrics.insert(time, self.used_memory_metric, used_memory);
-        metrics.insert(time, self.used_memory_ratio_metric, used_memory / total_memory);
-        metrics.insert(time, self.available_memory_metric, available_memory);
-        metrics.insert(time, self.available_memory_metric_ratio, available_memory / total_memory);
-
-        Ok(())
+        Ok(memory_usage)
     }
+}
+
+struct MemoryUsage {
+    total_memory: f64,
+    used_memory: f64,
+    available_memory: f64,
 }
 
 pub struct DiskIOStatsCollector {
@@ -418,6 +446,8 @@ fn test_cpu_collector1() {
 fn test_memory_collector1() {
     let mut metric_definitions = MetricDefinitions::new();
     let mut memory_usage_collector = MemoryUsageCollector::new(&mut metric_definitions).unwrap();
+
+    std::thread::sleep(std::time::Duration::from_secs_f64(0.2));
 
     let mut metrics = MetricValues::new(TimeInterval::Minutes(1.0));
     memory_usage_collector.collect(TimePoint::now(), &mut metrics).unwrap();
