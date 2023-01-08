@@ -115,7 +115,9 @@ impl CpuUsageCollector {
 pub struct MemoryUsageCollector {
     total_memory_metric: MetricId,
     used_memory_metric: MetricId,
-    used_memory_ratio_metric: MetricId
+    used_memory_ratio_metric: MetricId,
+    available_memory_metric: MetricId,
+    available_memory_metric_ratio: MetricId
 }
 
 impl SystemMetricCollector for MemoryUsageCollector {
@@ -125,6 +127,8 @@ impl SystemMetricCollector for MemoryUsageCollector {
                 total_memory_metric: metric_definitions.define("total_memory"),
                 used_memory_metric: metric_definitions.define("used_memory"),
                 used_memory_ratio_metric: metric_definitions.define("used_memory_ratio"),
+                available_memory_metric: metric_definitions.define("available_memory"),
+                available_memory_metric_ratio: metric_definitions.define("available_memory_ratio")
             }
         )
     }
@@ -132,6 +136,7 @@ impl SystemMetricCollector for MemoryUsageCollector {
     fn collect(&mut self, time: TimePoint, metrics: &mut MetricValues) -> EventResult<()> {
         let mut total_memory = 0.0;
         let mut used_memory = 0.0;
+        let mut available_memory = 0.0;
 
         for line in std::fs::read_to_string("/proc/meminfo").map_err(|err| EventError::FailedToCollectSystemMetric(err))?.lines() {
             let parts = line.split(":").collect::<Vec<_>>();
@@ -142,7 +147,8 @@ impl SystemMetricCollector for MemoryUsageCollector {
                     total_memory = value;
                 }
                 "MemAvailable" => {
-                    used_memory = total_memory - value;
+                    available_memory = value;
+                    used_memory = total_memory - available_memory;
                 }
                 _ => {}
             }
@@ -151,6 +157,8 @@ impl SystemMetricCollector for MemoryUsageCollector {
         metrics.insert(time, self.total_memory_metric, total_memory);
         metrics.insert(time, self.used_memory_metric, used_memory);
         metrics.insert(time, self.used_memory_ratio_metric, used_memory / total_memory);
+        metrics.insert(time, self.available_memory_metric, available_memory);
+        metrics.insert(time, self.available_memory_metric_ratio, available_memory / total_memory);
 
         Ok(())
     }
