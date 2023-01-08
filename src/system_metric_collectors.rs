@@ -64,7 +64,7 @@ impl SystemMetricCollector for CpuUsageCollector {
     fn collect(&mut self, time: TimePoint, metrics: &mut MetricValues) -> EventResult<()> {
         let content = CpuUsageCollector::get_cpu_content()?;
         for (core_name, (total, idle)) in CpuUsageCollector::get_cpu_values(&content) {
-            if let Some((metric_id, prev_total, prev_idle)) = self.prev_values.get_mut(core_name) {
+            if let Some((metric_id, prev_total, prev_idle)) = self.prev_values.get_mut(&core_name) {
                 let diff_total = total - *prev_total;
                 let diff_idle = idle - *prev_idle;
                 let cpu_usage = if diff_total > 0 {1.0 - diff_idle as f64 / diff_total as f64} else {0.0};
@@ -80,7 +80,7 @@ impl SystemMetricCollector for CpuUsageCollector {
 }
 
 impl CpuUsageCollector {
-    fn get_cpu_values<'a>(content: &'a str) -> impl Iterator<Item=(&'a str, (i64, i64))> + 'a {
+    fn get_cpu_values<'a>(content: &'a str) -> impl Iterator<Item=(String, (i64, i64))> + 'a {
         content
             .lines()
             .map(|line| {
@@ -91,6 +91,12 @@ impl CpuUsageCollector {
                     let int_parts = parts.iter().skip(1).map(|x| i64::from_str(x)).flatten().collect::<Vec<_>>();
                     let total = int_parts.iter().sum::<i64>();
                     let idle = int_parts[3];
+
+                    let core_name = if core_name == "cpu" {
+                        "all".to_owned()
+                    } else {
+                        core_name.replace("cpu", "core")
+                    };
 
                     Some((core_name, (total, idle)))
                 } else {
@@ -394,7 +400,7 @@ fn test_cpu_collector1() {
         println!("{}: {}", metric_definitions.get_name(metric).unwrap(), value)
     }
 
-    assert_ne!(Some(&0.0), metrics.get(&metric_definitions.get_id("cpu_usage:cpu").unwrap()));
+    assert_ne!(Some(&0.0), metrics.get(&metric_definitions.get_id("cpu_usage:all").unwrap()));
 }
 
 #[test]

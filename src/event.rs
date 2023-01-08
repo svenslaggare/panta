@@ -22,7 +22,7 @@ pub struct Event {
 #[derive(Debug)]
 pub enum EventQuery {
     Expression(EventExpression),
-    Bool { left: Box<EventQuery>, right: Box<EventQuery>, operation: BoolOperator },
+    Bool { operator: BoolOperator, left: Box<EventQuery>, right: Box<EventQuery> },
     And { left: Box<EventQuery>, right: Box<EventQuery> },
     Or { left: Box<EventQuery>, right: Box<EventQuery> }
 }
@@ -34,7 +34,8 @@ pub enum EventExpression {
     Variance { value: ValueExpression, interval: TimeInterval },
     Covariance { left: ValueExpression, right: ValueExpression, interval: TimeInterval },
     Correlation { left: ValueExpression, right: ValueExpression, interval: TimeInterval },
-    Arithmetic { left: Box<EventExpression>, right: Box<EventExpression>, operation: ArithmeticOperator },
+    Arithmetic { operator: ArithmeticOperator, left: Box<EventExpression>, right: Box<EventExpression> },
+    Function { function: Function, arguments: Vec<EventExpression> }
 }
 
 #[derive(Debug)]
@@ -42,7 +43,8 @@ pub enum ValueExpression {
     IndependentMetric,
     DependentMetric,
     Constant(f64),
-    Arithmetic { left: Box<ValueExpression>, right: Box<ValueExpression>, operation: ArithmeticOperator },
+    Arithmetic { operator: ArithmeticOperator, left: Box<ValueExpression>, right: Box<ValueExpression> },
+    Function { function: Function, arguments: Vec<ValueExpression> }
 }
 
 #[derive(Debug)]
@@ -52,7 +54,7 @@ pub enum EventOutputName {
     DependentMetricName
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum BoolOperator {
     Equal,
     NotEqual,
@@ -126,6 +128,40 @@ impl Display for ArithmeticOperator {
             ArithmeticOperator::Subtract => write!(f, "-"),
             ArithmeticOperator::Multiply => write!(f, "*"),
             ArithmeticOperator::Divide => write!(f, "/"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Function {
+    Abs,
+    Sqrt,
+    Square,
+    Exp,
+    LogE
+}
+
+impl Function {
+    pub fn evaluate(&self, arguments: &Vec<f64>) -> Option<f64> {
+        match self {
+            Function::Abs if arguments.len() == 1 => Some(arguments[0].abs()),
+            Function::Sqrt if arguments.len() == 1 => Some(arguments[0].sqrt()),
+            Function::Square if arguments.len() == 1 => Some(arguments[0] * arguments[0]),
+            Function::Exp if arguments.len() == 2 => Some(arguments[0].exp()),
+            Function::LogE if arguments.len() == 1  => Some(arguments[0].ln()),
+            _ => None
+        }
+    }
+}
+
+impl Display for Function {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Function::Abs => write!(f, "abs"),
+            Function::Sqrt => write!(f, "sqrt"),
+            Function::Square => write!(f, "square"),
+            Function::Exp => write!(f, "exp"),
+            Function::LogE => write!(f, "ln"),
         }
     }
 }
