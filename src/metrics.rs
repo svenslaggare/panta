@@ -52,6 +52,10 @@ impl MetricValues {
         }
     }
 
+    pub fn len(&self) -> usize {
+        self.values.len()
+    }
+
     pub fn insert(&mut self, time: TimePoint, metric: MetricId, value: f64) {
         self.values.insert(metric, (time, value));
     }

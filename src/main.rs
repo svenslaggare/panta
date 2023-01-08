@@ -6,7 +6,7 @@ mod engine;
 mod system_metric_collectors;
 
 use std::time::{Duration, Instant};
-use log::info;
+use log::{info, trace};
 
 use crate::engine::EventEngine;
 use crate::event::{BoolOperator, Event, EventExpression, EventOutputName, EventQuery, ValueExpression};
@@ -52,6 +52,7 @@ fn main() {
         engine.handle_values(&metric_definitions, now, &values, on_event);
         values.clear_old(now);
         let elapsed = (Instant::now() - now).as_secs_f64();
+        trace!("Elapsed time: {:.3} ms, metrics: {}", elapsed * 1000.0, values.len());
         std::thread::sleep(Duration::from_secs_f64((1.0 / sampling_rate - elapsed).max(0.0)));
     }
 }
