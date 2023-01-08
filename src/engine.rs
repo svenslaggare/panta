@@ -4,7 +4,7 @@ use std::time::{Duration};
 use float_ord::FloatOrd;
 use fnv::{FnvHashMap, FnvHashSet};
 
-use crate::aggregator::{AggregateOperations, AverageAggregate, CovarianceAggregate, VarianceAggregate};
+use crate::aggregator::{AggregateOperations, AverageAggregate, CorrelationAggregate, CovarianceAggregate, VarianceAggregate};
 use crate::event::{ArithmeticOperator, BoolOperator, Event, EventExpression, EventId, EventOutputName, EventQuery, ValueExpression};
 use crate::metrics::{MetricDefinitions, MetricValues};
 
@@ -187,6 +187,19 @@ impl EventEngine {
                 let aggregate = self.aggregators.add_covariance(left_value_id, right_value_id, interval);
                 Ok(CompiledEventExpression::Covariance(aggregate))
             }
+            EventExpression::Correlation { left, right, interval } => {
+                let mut left_context = CompiledValueExpressionContext::new(context);
+                let left = CompiledValueExpression::compile(&left, &mut left_context)?;
+
+                let mut right_context = CompiledValueExpressionContext::new(context);
+                let right = CompiledValueExpression::compile(&right, &mut right_context)?;
+
+                let left_value_id = self.add_value(left_context.used_metrics, left, value_generators);
+                let right_value_id = self.add_value(right_context.used_metrics, right, value_generators);
+
+                let aggregate = self.aggregators.add_correlation(left_value_id, right_value_id, interval);
+                Ok(CompiledEventExpression::Correlation(aggregate))
+            }
             EventExpression::Arithmetic { left, right, operation } => {
                 let left = self.compile_expression(context, value_generators, *left)?;
                 let right = self.compile_expression(context, value_generators, *right)?;
@@ -253,7 +266,7 @@ impl EventEngine {
 
         for event in self.events.iter() {
             let query = &event.query;
-            println!("Event #{}: {}", event.id, self.query_to_string(&values, query).unwrap_or("N/A".to_owned()));
+            // println!("Event #{}: {}", event.id, self.query_to_string(&values, query).unwrap_or("N/A".to_owned()));
             if let Some(accept) = self.evaluate_query(&values, query).map(|value| value.bool()).flatten() {
                 if accept {
                     on_event(
@@ -264,7 +277,7 @@ impl EventEngine {
             }
         }
 
-        println!()
+        // println!()
     }
 
     fn evaluate_query(&self,
@@ -314,6 +327,7 @@ impl EventEngine {
             CompiledEventExpression::Average(aggregate) => Some(Value::Float(self.aggregators.average(aggregate)?)),
             CompiledEventExpression::Variance(aggregate) => Some(Value::Float(self.aggregators.variance(aggregate)?)),
             CompiledEventExpression::Covariance(aggregate) => Some(Value::Float(self.aggregators.covariance(aggregate)?)),
+            CompiledEventExpression::Correlation(aggregate) => Some(Value::Float(self.aggregators.correlation(aggregate)?)),
             CompiledEventExpression::Arithmetic { left, right, operation } => {
                 let left = self.evaluate_expression(values, left)?.float()?;
                 let right = self.evaluate_expression(values, right)?.float()?;
@@ -355,6 +369,7 @@ impl EventEngine {
             CompiledEventExpression::Average(aggregate) => Some(format!("Avg({})", self.aggregators.average(aggregate)?)),
             CompiledEventExpression::Variance(aggregate) => Some(format!("Var({})", self.aggregators.variance(aggregate)?)),
             CompiledEventExpression::Covariance(aggregate) => Some(format!("Cov({})", self.aggregators.covariance(aggregate)?)),
+            CompiledEventExpression::Correlation(aggregate) => Some(format!("Corr({})", self.aggregators.correlation(aggregate)?)),
             CompiledEventExpression::Arithmetic { left, right, operation } => {
                 let left = self.expression_to_string(values, left)?;
                 let right = self.expression_to_string(values, right)?;
@@ -403,6 +418,7 @@ enum CompiledEventExpression {
     Average(AverageAggregate),
     Variance(VarianceAggregate),
     Covariance(CovarianceAggregate),
+    Correlation(CorrelationAggregate),
     Arithmetic { left: Box<CompiledEventExpression>, right: Box<CompiledEventExpression>, operation: ArithmeticOperator },
 }
 
@@ -478,7 +494,6 @@ fn test_event_engine1() {
     let y = metric_definitions.define("y");
 
     let mut engine = EventEngine::new();
-
 
     engine.add_event(
         Event {

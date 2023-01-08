@@ -33,6 +33,7 @@ pub enum EventExpression {
     Average { value: ValueExpression, interval: TimeInterval },
     Variance { value: ValueExpression, interval: TimeInterval },
     Covariance { left: ValueExpression, right: ValueExpression, interval: TimeInterval },
+    Correlation { left: ValueExpression, right: ValueExpression, interval: TimeInterval },
     Arithmetic { left: Box<EventExpression>, right: Box<EventExpression>, operation: ArithmeticOperator },
 }
 

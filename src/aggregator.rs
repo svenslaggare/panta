@@ -42,6 +42,13 @@ impl AggregateOperations {
         CovarianceAggregate(sum_left_op, sum_right_op, sum_product_op)
     }
 
+    pub fn add_correlation(&mut self, left: ValueId, right: ValueId, interval: TimeInterval) -> CorrelationAggregate {
+        let variance_left_op = self.add_variance(left, interval);
+        let variance_right_op = self.add_variance(right, interval);
+        let covariance_op = self.add_covariance(left, right, interval);
+        CorrelationAggregate(variance_left_op, variance_right_op, covariance_op)
+    }
+
     fn add_sum(&mut self, value_id: ValueId, interval: TimeInterval) -> AggregateId {
         self.add_single(SingleAggregateOperation::Sum { value_id, interval: interval.duration() }, interval)
     }
@@ -120,6 +127,10 @@ impl AggregateOperations {
         Some((sum_squares - (sum * sum) / n) / n)
     }
 
+    pub fn standard_deviation(&self, aggregate: &VarianceAggregate) -> Option<f64> {
+        Some(self.variance(aggregate)?.sqrt())
+    }
+
     pub fn covariance(&self, aggregate: &CovarianceAggregate) -> Option<f64> {
         let sum_left_aggregator = self.aggregators.get(&aggregate.0)?;
         let sum_right_aggregator = self.aggregators.get(&aggregate.1)?;
@@ -131,6 +142,13 @@ impl AggregateOperations {
         let n = sum_product_aggregator.len() as f64;
         Some((sum_product - (sum_left * sum_right) / n) / n)
     }
+
+    pub fn correlation(&self, aggregate: &CorrelationAggregate) -> Option<f64> {
+        let std_left = self.standard_deviation(&aggregate.0)?;
+        let std_right = self.standard_deviation(&aggregate.1)?;
+        let covariance = self.covariance(&aggregate.2)?;
+        Some(covariance / (std_left * std_right))
+    }
 }
 
 #[derive(Debug)]
@@ -141,6 +159,9 @@ pub struct VarianceAggregate(AggregateId, AggregateId);
 
 #[derive(Debug)]
 pub struct CovarianceAggregate(AggregateId, AggregateId, AggregateId);
+
+#[derive(Debug)]
+pub struct CorrelationAggregate(VarianceAggregate, VarianceAggregate, CovarianceAggregate);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct AggregateId(pub u64);
@@ -209,7 +230,7 @@ impl SumAggregator {
 }
 
 #[test]
-fn test_aggregate_operations_average1() {
+fn test_average1() {
     let mut operations = AggregateOperations::new();
     let t0 = TimePoint::now();
 
@@ -235,7 +256,7 @@ fn test_aggregate_operations_average1() {
 }
 
 #[test]
-fn test_aggregate_operations_average2() {
+fn test_average2() {
     let mut operations = AggregateOperations::new();
     let t0 = TimePoint::now();
 
@@ -262,7 +283,7 @@ fn test_aggregate_operations_average2() {
 }
 
 #[test]
-fn test_aggregate_operations_variance1() {
+fn test_variance1() {
     let mut operations = AggregateOperations::new();
     let t0 = TimePoint::now();
 
@@ -288,7 +309,7 @@ fn test_aggregate_operations_variance1() {
 }
 
 #[test]
-fn test_aggregate_operations_covariance1() {
+fn test_covariance1() {
     let mut operations = AggregateOperations::new();
     let t0 = TimePoint::now();
 
@@ -317,7 +338,7 @@ fn test_aggregate_operations_covariance1() {
 }
 
 #[test]
-fn test_aggregate_operations_covariance2() {
+fn test_covariance2() {
     let mut operations = AggregateOperations::new();
     let t0 = TimePoint::now();
 
@@ -346,4 +367,28 @@ fn test_aggregate_operations_covariance2() {
     assert_approx_eq!(12.0, operations.average(&average_x).unwrap());
     assert_approx_eq!(120.0, operations.average(&average_y).unwrap());
     assert_approx_eq!(160.0, operations.covariance(&covariance_xy).unwrap());
+}
+
+#[test]
+fn test_correlation1() {
+    let mut operations = AggregateOperations::new();
+    let t0 = TimePoint::now();
+
+    let x = ValueId(0);
+    let y = ValueId(1);
+    let correlation_xy = operations.add_correlation(x, y, TimeInterval::Seconds(10.0));
+    let mut values = FnvHashMap::default();
+
+    values.insert(x, 1.0); values.insert(y, 10.0);
+    operations.handle_values(t0, &values);
+
+    values.insert(x, 2.0); values.insert(y, 20.0);
+    operations.handle_values(t0.add(Duration::from_secs_f64(2.0)), &values);
+
+    assert_approx_eq!(1.0, operations.correlation(&correlation_xy).unwrap());
+
+    values.insert(x, 4.0); values.insert(y, -40.0);
+    operations.handle_values(t0.add(Duration::from_secs_f64(4.0)), &values);
+
+    assert_approx_eq!(-0.8824975, operations.correlation(&correlation_xy).unwrap());
 }
