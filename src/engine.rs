@@ -43,7 +43,7 @@ impl EventEngine {
     pub fn add_event(&mut self, event: Event) -> EventResult<EventId> {
         let event_id = self.next_event_id;
 
-        for dependent_metric in event.dependent_metric {
+        for (dependent_metric_index, dependent_metric) in event.dependent_metric.into_iter().enumerate() {
             let mut value_generators = Vec::new();
 
             let context = CompileEventContext {
@@ -68,6 +68,7 @@ impl EventEngine {
             self.events.push(
                 CompiledEvent {
                     id: event_id,
+                    sub_id: dependent_metric_index as u64,
                     independent_metric: event.independent_metric,
                     dependent_metric,
                     query,
@@ -288,7 +289,7 @@ impl EventEngine {
 
         for event in self.events.iter() {
             let query = &event.query;
-            // println!("Event #{}: {}", event.id, self.query_to_string(&values, query).unwrap_or("N/A".to_owned()));
+            // println!("Event #{}.{}: {}", event.id, event.sub_id, self.query_to_string(&values, query).unwrap_or("N/A".to_owned()));
             if let Some(accept) = self.evaluate_query(&values, query).map(|value| value.bool()).flatten() {
                 if accept {
                     on_event(
@@ -421,6 +422,7 @@ type Values = FnvHashMap<ValueId, f64>;
 #[derive(Debug)]
 struct CompiledEvent {
     id: EventId,
+    sub_id: u64,
     independent_metric: MetricId,
     dependent_metric: MetricId,
     query: CompiledEventQuery,

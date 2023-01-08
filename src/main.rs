@@ -6,6 +6,8 @@ mod engine;
 mod system_metric_collectors;
 
 use std::time::{Duration, Instant};
+use log::info;
+
 use crate::engine::EventEngine;
 use crate::event::{BoolOperator, Event, EventExpression, EventOutputName, EventQuery, ValueExpression};
 use crate::metrics::{MetricDefinitions, MetricValues};
@@ -13,6 +15,8 @@ use crate::model::{TimeInterval, TimePoint, Value};
 use crate::system_metric_collectors::SystemMetricsCollector;
 
 fn main() {
+    setup_logger().unwrap();
+
     let mut metric_definitions = MetricDefinitions::new();
     let mut engine = EventEngine::new();
     let mut system_metrics_collector = SystemMetricsCollector::new(&mut metric_definitions).unwrap();
@@ -37,7 +41,7 @@ fn main() {
             output_string += &value.to_string();
         }
 
-        println!("Event generated for #{}, {}", event_index, output_string);
+        info!("Event generated for #{}, {}", event_index, output_string);
     };
 
     let mut values = MetricValues::new(TimeInterval::Minutes(0.5));
@@ -52,11 +56,34 @@ fn main() {
     }
 }
 
+fn setup_logger() -> Result<(), fern::InitError> {
+    fern::Dispatch::new()
+        .format(|out, message, record| {
+            out.finish(format_args!(
+                "{}[{}][{}] {}",
+                chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
+                record.target(),
+                record.level(),
+                message
+            ))
+        })
+        .level(log::LevelFilter::Debug)
+        .chain(std::io::stdout())
+        .apply()?;
+    Ok(())
+}
+
 fn add_events(metric_definitions: &MetricDefinitions, engine: &mut EventEngine) {
+    let interval = TimeInterval::Seconds(5.0);
+
     engine.add_event(
         Event {
             independent_metric: metric_definitions.get_id("cpu_usage:all").unwrap(),
-            dependent_metric: vec![metric_definitions.get_id("used_memory").unwrap()],
+            dependent_metric: vec![
+                metric_definitions.get_id("used_memory").unwrap(),
+                metric_definitions.get_id("disk_read_bytes:sda2").unwrap(),
+                metric_definitions.get_id("disk_write_bytes:sda2").unwrap()
+            ],
             query: EventQuery::And {
                 left: Box::new(
                     EventQuery::Bool {
@@ -65,7 +92,7 @@ fn add_events(metric_definitions: &MetricDefinitions, engine: &mut EventEngine) 
                                 EventExpression::Correlation {
                                     left: ValueExpression::IndependentMetric,
                                     right: ValueExpression::DependentMetric,
-                                    interval: TimeInterval::Seconds(10.0)
+                                    interval
                                 }
                             )
                         ),
@@ -76,37 +103,57 @@ fn add_events(metric_definitions: &MetricDefinitions, engine: &mut EventEngine) 
                     }
                 ),
                 right: Box::new(
-                    EventQuery::Bool {
+                    EventQuery::And {
                         left: Box::new(
-                            EventQuery::Expression(
-                                EventExpression::Average {
-                                    value: ValueExpression::IndependentMetric,
-                                    interval: TimeInterval::Seconds(10.0)
-                                }
-                            )
+                            EventQuery::Bool {
+                                left: Box::new(
+                                    EventQuery::Expression(
+                                        EventExpression::Average {
+                                            value: ValueExpression::IndependentMetric,
+                                            interval
+                                        }
+                                    )
+                                ),
+                                right: Box::new(
+                                    EventQuery::Expression(EventExpression::Value(ValueExpression::Constant(0.1)))
+                                ),
+                                operator: BoolOperator::GreaterThan
+                            }
                         ),
                         right: Box::new(
-                            EventQuery::Expression(EventExpression::Value(ValueExpression::Constant(0.1)))
+                            EventQuery::Bool {
+                                left: Box::new(
+                                    EventQuery::Expression(
+                                        EventExpression::Average {
+                                            value: ValueExpression::DependentMetric,
+                                            interval
+                                        }
+                                    )
+                                ),
+                                right: Box::new(
+                                    EventQuery::Expression(EventExpression::Value(ValueExpression::Constant(0.0)))
+                                ),
+                                operator: BoolOperator::GreaterThan
+                            }
                         ),
-                        operator: BoolOperator::GreaterThan
                     }
                 )
             },
             outputs: vec![
                 (
                     EventOutputName::IndependentMetricName,
-                    EventExpression::Average { value: ValueExpression::IndependentMetric, interval: TimeInterval::Seconds(10.0) }
+                    EventExpression::Average { value: ValueExpression::IndependentMetric, interval }
                 ),
                 (
                     EventOutputName::DependentMetricName,
-                    EventExpression::Average { value: ValueExpression::DependentMetric, interval: TimeInterval::Seconds(10.0) }
+                    EventExpression::Average { value: ValueExpression::DependentMetric, interval }
                 ),
                 (
                     EventOutputName::String("corr".to_owned()),
                     EventExpression::Correlation {
                         left: ValueExpression::IndependentMetric,
                         right: ValueExpression::DependentMetric,
-                        interval: TimeInterval::Seconds(10.0)
+                        interval
                     }
                 )
             ]

@@ -146,8 +146,13 @@ impl AggregateOperations {
     pub fn correlation(&self, aggregate: &CorrelationAggregate) -> Option<f64> {
         let std_left = self.standard_deviation(&aggregate.0)?;
         let std_right = self.standard_deviation(&aggregate.1)?;
+        let std_product = std_left * std_right;
+        if std_product.abs() < 1E-9 {
+            return None;
+        }
+
         let covariance = self.covariance(&aggregate.2)?;
-        Some(covariance / (std_left * std_right))
+        Some(covariance / std_product)
     }
 }
 

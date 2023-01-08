@@ -200,8 +200,11 @@ impl SystemMetricCollector for DiskIOStatsCollector {
                 metrics.insert(time, disk_stats_metrics.read_bytes_metric, scale * (diff_disk_stats.read_bytes as f64 / elapsed_time));
                 metrics.insert(time, disk_stats_metrics.write_bytes_metric, scale * (diff_disk_stats.write_bytes as f64 / elapsed_time));
 
-                *prev_disk_stats = disk_stats;
-                self.prev_measurement_time = measurement_time;
+                // To handle when sampling too fast
+                if elapsed_time > 1.0 {
+                    *prev_disk_stats = disk_stats;
+                    self.prev_measurement_time = measurement_time;
+                }
             }
         }
 
@@ -423,7 +426,7 @@ fn test_disk_io_stats_collector1() {
     let mut metric_definitions = MetricDefinitions::new();
     let mut disk_io_stats_collector = DiskIOStatsCollector::new(&mut metric_definitions).unwrap();
 
-    std::thread::sleep(std::time::Duration::from_secs_f64(0.2));
+    std::thread::sleep(std::time::Duration::from_secs_f64(1.1));
 
     let mut metrics = MetricValues::new(TimeInterval::Minutes(1.0));
     disk_io_stats_collector.collect(TimePoint::now(), &mut metrics).unwrap();

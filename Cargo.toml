@@ -8,4 +8,8 @@ assert_approx_eq = "1"
 fnv = "1"
 float-ord = "0.3"
 
+chrono = "0.4"
+fern = "0.6"
+log = "0.4"
+
 libc = "0.2"
