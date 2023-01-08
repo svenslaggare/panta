@@ -3,7 +3,8 @@ mod event;
 mod metrics;
 mod aggregator;
 mod engine;
-mod system_metric_collectors;
+mod system_metrics_collectors;
+mod rabbitmq_metrics_collector;
 
 use std::time::{Duration, Instant};
 use log::{info, trace};
@@ -12,7 +13,7 @@ use crate::engine::EventEngine;
 use crate::event::{BoolOperator, Event, EventExpression, EventOutputName, EventQuery, ValueExpression};
 use crate::metrics::{MetricDefinitions, MetricValues};
 use crate::model::{TimeInterval, TimePoint, Value};
-use crate::system_metric_collectors::SystemMetricsCollector;
+use crate::system_metrics_collectors::SystemMetricsCollector;
 
 fn main() {
     setup_logger().unwrap();
@@ -79,11 +80,11 @@ fn add_events(metric_definitions: &MetricDefinitions, engine: &mut EventEngine) 
 
     engine.add_event(
         Event {
-            independent_metric: metric_definitions.get_id("cpu_usage:all").unwrap(),
+            independent_metric: metric_definitions.get_id("system.cpu_usage:all").unwrap(),
             dependent_metric: vec![
-                metric_definitions.get_id("used_memory").unwrap(),
-                metric_definitions.get_id("disk_read_bytes:sda2").unwrap(),
-                metric_definitions.get_id("disk_write_bytes:sda2").unwrap()
+                metric_definitions.get_id("system.used_memory").unwrap(),
+                metric_definitions.get_id("system.disk_read_bytes:sda2").unwrap(),
+                metric_definitions.get_id("system.disk_write_bytes:sda2").unwrap()
             ],
             query: EventQuery::And {
                 left: Box::new(
