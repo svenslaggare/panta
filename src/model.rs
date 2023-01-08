@@ -60,6 +60,7 @@ impl Display for Value {
 #[derive(Debug)]
 pub enum EventError {
     FailedToCollectSystemMetric(std::io::Error),
+    FailedToCollectRabbitMQMetric(reqwest::Error),
     FailedToCompileMetric
 }
 
