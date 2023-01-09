@@ -10,14 +10,14 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use log::{info, trace};
+use log::{error, info, trace};
 
 use tokio::task;
 
 use crate::engine::EventEngine;
 use crate::event::{BoolOperator, Event, EventExpression, EventOutputName, EventQuery, ValueExpression};
 use crate::metrics::{MetricDefinitions, MetricValues};
-use crate::model::{TimeInterval, TimePoint, Value};
+use crate::model::{EventError, TimeInterval, TimePoint, Value};
 use crate::rabbitmq_metrics_collector::RabbitMQStatsCollector;
 use crate::system_metrics_collectors::SystemMetricsCollector;
 
@@ -68,14 +68,25 @@ async fn main() {
             system_metrics_collector.collect(now, &mut values).unwrap();
 
             let rabbitmq_metrics_collector_clone = rabbitmq_metrics_collector.clone();
-            let rabbitmq_task = task::spawn_local(async move {
+            let rabbitmq_result = task::spawn_local(async move {
                 let mut rabbitmq_values = MetricValues::new(TimeInterval::Seconds(0.0));
-                rabbitmq_metrics_collector_clone.borrow_mut().collect(now, &mut rabbitmq_values).await.unwrap();
-                rabbitmq_values
+                let rabbitmq_result = rabbitmq_metrics_collector_clone.borrow_mut().collect(
+                    now,
+                    &mut rabbitmq_values
+                ).await;
+                rabbitmq_result.map(|x| rabbitmq_values)
             });
 
             engine.handle_values(&metric_definitions, now, &values, on_event);
-            values.extend(rabbitmq_task.await.unwrap());
+            match rabbitmq_result.await.unwrap() {
+                Ok(rabbitmq_values) => {
+                    values.extend(rabbitmq_values);
+                }
+                Err(err) => {
+                    error!("Failed to collect RabbitMQ metrics: {:?}", err);
+                }
+            }
+
             values.clear_old(now);
 
             let elapsed = (Instant::now() - now).as_secs_f64();
