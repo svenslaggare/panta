@@ -18,7 +18,7 @@ def main():
     #     channel.basic_publish(exchange, routing_key, "Hello, World #{}!".format(i).encode("utf-8"))
     #     time.sleep(0.1)
 
-    for i in range(0, 100000):
+    for i in range(0, 200000):
         channel.basic_publish(exchange, routing_key, "Hello, World #{}!".format(i).encode("utf-8"))
 
     # def callback(channel, method, properties, body):

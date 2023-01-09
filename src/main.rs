@@ -5,6 +5,7 @@ mod aggregator;
 mod engine;
 mod system_metrics_collectors;
 mod rabbitmq_metrics_collector;
+mod event_output;
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -16,6 +17,7 @@ use tokio::task;
 
 use crate::engine::EventEngine;
 use crate::event::{BoolOperator, Event, EventExpression, EventOutputName, EventQuery, ValueExpression};
+use crate::event_output::{ConsoleEventOutputHandler, EventOutputHandlers};
 use crate::metrics::{MetricDefinitions, MetricValues};
 use crate::model::{EventError, TimeInterval, TimePoint, Value};
 use crate::rabbitmq_metrics_collector::RabbitMQStatsCollector;
@@ -43,23 +45,8 @@ async fn main() {
 
         println!();
 
-        let on_event = |event_index, outputs: Vec<(String, Value)>| {
-            let mut output_string = String::new();
-            let mut is_first = true;
-            for (name, value) in outputs {
-                if !is_first {
-                    output_string += ", ";
-                } else {
-                    is_first = false;
-                }
-
-                output_string += &name;
-                output_string += "=";
-                output_string += &value.to_string();
-            }
-
-            info!("Event generated for #{}, {}", event_index, output_string);
-        };
+        let mut event_output_handlers = EventOutputHandlers::new();
+        event_output_handlers.add_handler(Box::new(ConsoleEventOutputHandler::new()));
 
         let mut values = MetricValues::new(TimeInterval::Minutes(0.5));
 
@@ -77,7 +64,17 @@ async fn main() {
                 rabbitmq_result.map(|x| rabbitmq_values)
             });
 
-            engine.handle_values(&metric_definitions, now, &values, on_event);
+            engine.handle_values(
+                &metric_definitions,
+                now,
+                &values,
+                |event_id, values: Vec<(String, Value)>| {
+                    if let Err(err) = event_output_handlers.handle_output(&event_id, &values) {
+                        error!("Failed generating output due to: {:?}", err);
+                    }
+                }
+            );
+
             match rabbitmq_result.await.unwrap() {
                 Ok(rabbitmq_values) => {
                     values.extend(rabbitmq_values);
