@@ -52,8 +52,6 @@ async fn main() {
 
         loop {
             let now = TimePoint::now();
-            system_metrics_collector.collect(now, &mut values).unwrap();
-
             let rabbitmq_metrics_collector_clone = rabbitmq_metrics_collector.clone();
             let rabbitmq_result = task::spawn_local(async move {
                 let mut rabbitmq_values = MetricValues::new(TimeInterval::Seconds(0.0));
@@ -63,6 +61,17 @@ async fn main() {
                 ).await;
                 rabbitmq_result.map(|x| rabbitmq_values)
             });
+
+            system_metrics_collector.collect(now, &mut values).unwrap();
+
+            match rabbitmq_result.await.unwrap() {
+                Ok(rabbitmq_values) => {
+                    values.extend(rabbitmq_values);
+                }
+                Err(err) => {
+                    error!("Failed to collect RabbitMQ metrics: {:?}", err);
+                }
+            }
 
             engine.handle_values(
                 &metric_definitions,
@@ -74,15 +83,6 @@ async fn main() {
                     }
                 }
             );
-
-            match rabbitmq_result.await.unwrap() {
-                Ok(rabbitmq_values) => {
-                    values.extend(rabbitmq_values);
-                }
-                Err(err) => {
-                    error!("Failed to collect RabbitMQ metrics: {:?}", err);
-                }
-            }
 
             values.clear_old(now);
 
