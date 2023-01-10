@@ -5,6 +5,7 @@ mod aggregator;
 mod engine;
 mod system_metrics_collectors;
 mod rabbitmq_metrics_collector;
+mod custom_metrics_collector;
 mod event_output;
 
 use std::cell::RefCell;
@@ -13,20 +14,24 @@ use std::time::{Duration, Instant};
 
 use log::{error, info, trace};
 
+use tokio::sync::mpsc;
 use tokio::task;
+
+use crate::custom_metrics_collector::{CustomMetric, CustomMetricsCollector};
 
 use crate::engine::EventEngine;
 use crate::event::{BoolOperator, Event, EventExpression, EventOutputName, EventQuery, ValueExpression};
 use crate::event_output::{ConsoleEventOutputHandler, EventOutputHandlers};
 use crate::metrics::{MetricDefinitions, MetricValues};
-use crate::model::{EventError, TimeInterval, TimePoint, Value};
+use crate::model::{TimeInterval, TimePoint, Value};
 use crate::rabbitmq_metrics_collector::RabbitMQStatsCollector;
 use crate::system_metrics_collectors::SystemMetricsCollector;
 
 #[tokio::main]
 async fn main() {
-    let local = task::LocalSet::new();
     setup_logger().unwrap();
+
+    let local = task::LocalSet::new();
 
     local.run_until(async move {
         let sampling_rate = 5.0;
@@ -35,7 +40,7 @@ async fn main() {
         let mut engine = EventEngine::new();
 
         let mut system_metrics_collector = SystemMetricsCollector::new(&mut metric_definitions).unwrap();
-        let mut rabbitmq_metrics_collector = RabbitMQStatsCollector::new(
+        let rabbitmq_metrics_collector = RabbitMQStatsCollector::new(
             "http://localhost:15672", "guest", "guest",
             &mut metric_definitions
         ).await.unwrap();
@@ -43,7 +48,11 @@ async fn main() {
 
         add_events(&metric_definitions, &mut engine);
 
-        println!();
+        let (custom_metrics_sender, mut custom_metrics_receiver) = mpsc::unbounded_channel();
+        let custom_metrics_collector = CustomMetricsCollector::new(custom_metrics_sender).unwrap();
+        task::spawn_local(async move {
+            custom_metrics_collector.collect().await.unwrap();
+        });
 
         let mut event_output_handlers = EventOutputHandlers::new();
         event_output_handlers.add_handler(Box::new(ConsoleEventOutputHandler::new()));
@@ -51,18 +60,19 @@ async fn main() {
         let mut values = MetricValues::new(TimeInterval::Minutes(0.5));
 
         loop {
-            let now = TimePoint::now();
+            let metric_time = TimePoint::now();
+
             let rabbitmq_metrics_collector_clone = rabbitmq_metrics_collector.clone();
             let rabbitmq_result = task::spawn_local(async move {
                 let mut rabbitmq_values = MetricValues::new(TimeInterval::Seconds(0.0));
                 let rabbitmq_result = rabbitmq_metrics_collector_clone.borrow_mut().collect(
-                    now,
+                    metric_time,
                     &mut rabbitmq_values
                 ).await;
-                rabbitmq_result.map(|x| rabbitmq_values)
+                rabbitmq_result.map(|_| rabbitmq_values)
             });
 
-            system_metrics_collector.collect(now, &mut values).unwrap();
+            system_metrics_collector.collect(metric_time, &mut values).unwrap();
 
             match rabbitmq_result.await.unwrap() {
                 Ok(rabbitmq_values) => {
@@ -73,9 +83,18 @@ async fn main() {
                 }
             }
 
+            while let Ok(custom_metric) = custom_metrics_receiver.try_recv() {
+                match custom_metric {
+                    CustomMetric::Gauge { name, value } => {
+                        let metric_id = metric_definitions.define(&name);
+                        values.insert(metric_time, metric_id, value);
+                    }
+                }
+            }
+
             engine.handle_values(
                 &metric_definitions,
-                now,
+                metric_time,
                 &values,
                 |event_id, values: Vec<(String, Value)>| {
                     if let Err(err) = event_output_handlers.handle_output(&event_id, &values) {
@@ -84,9 +103,9 @@ async fn main() {
                 }
             );
 
-            values.clear_old(now);
+            values.clear_old(metric_time);
 
-            let elapsed = (Instant::now() - now).as_secs_f64();
+            let elapsed = (Instant::now() - metric_time).as_secs_f64();
             trace!("Elapsed time: {:.3} ms, metrics: {}", elapsed * 1000.0, values.len());
             tokio::time::sleep(Duration::from_secs_f64((1.0 / sampling_rate - elapsed).max(0.0))).await;
         }

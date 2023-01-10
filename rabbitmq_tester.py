@@ -11,7 +11,7 @@ def main():
     exchange = "amq.topic"
     routing_key = "panta-test"
 
-    channel.queue_declare(queue)
+    channel.queue_declare(queue, durable=True)
     channel.queue_bind(queue, exchange, routing_key)
 
     # for i in range(0, 1000):

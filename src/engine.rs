@@ -1,9 +1,3 @@
-use std::cell::RefCell;
-use std::ops::Add;
-use std::rc::Rc;
-use std::time::{Duration};
-use assert_approx_eq::assert_approx_eq;
-
 use float_ord::FloatOrd;
 use fnv::{FnvHashMap, FnvHashSet};
 
@@ -56,14 +50,14 @@ impl EventEngine {
                 &mut value_generators,
                 &event.query
             )?;
-            println!("{:#?}", query);
+            // println!("{:#?}", query);
 
             let outputs = self.compile_output(
                 &context,
                 &mut value_generators,
                 &event.outputs
             )?;
-            println!("{:#?}", outputs);
+            // println!("{:#?}", outputs);
 
             self.events.push(
                 CompiledEvent {
@@ -77,7 +71,7 @@ impl EventEngine {
             );
 
             for (value_id, used_metrics) in value_generators {
-                println!("{:?}: {:?}", self.value_generators[&value_id], used_metrics);
+                // println!("{:?}: {:?}", self.value_generators[&value_id], used_metrics);
 
                 if !used_metrics.is_empty() {
                     for metric in used_metrics {
@@ -542,6 +536,12 @@ impl CompiledValueExpressionContext {
 
 #[test]
 fn test_event_engine1() {
+    use std::cell::RefCell;
+    use std::ops::Add;
+    use std::rc::Rc;
+    use std::time::{Duration};
+    use assert_approx_eq::assert_approx_eq;
+
     let mut metric_definitions = MetricDefinitions::new();
     let x = metric_definitions.define("x");
     let y = metric_definitions.define("y");
