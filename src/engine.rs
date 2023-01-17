@@ -47,65 +47,64 @@ impl EventEngine {
     fn compile_event(&mut self, metric_definitions: &MetricDefinitions, event_id: EventId, event: &Event) -> EventResult<()> {
         let mut sub_query_id = 0;
         for dependent_metric in event.dependent_metric.iter() {
-            for independent_metric_id in metric_definitions.expand(&event.independent_metric)? {
-                for dependent_metric_id in metric_definitions.expand(dependent_metric)? {
-                    let mut value_generators = Vec::new();
+            for (independent_metric_id, dependent_metric_id) in itertools::iproduct!(metric_definitions.expand(&event.independent_metric)?,
+                                                                                     metric_definitions.expand(dependent_metric)?) {
+                let mut value_generators = Vec::new();
 
-                    let context = CompileEventContext {
+                let context = CompileEventContext {
+                    independent_metric: independent_metric_id,
+                    dependent_metric: dependent_metric_id,
+                };
+
+                let query = self.compile_query(
+                    &context,
+                    &mut value_generators,
+                    &event.query,
+                )?;
+                // println!("{:#?}", query);
+
+                let outputs = self.compile_output(
+                    &context,
+                    &mut value_generators,
+                    &event.outputs,
+                )?;
+                // println!("{:#?}", outputs);
+
+                self.compiled_events.push(
+                    CompiledEvent {
+                        id: event_id,
+                        sub_id: sub_query_id as u64,
                         independent_metric: independent_metric_id,
-                        dependent_metric: dependent_metric_id
-                    };
-
-                    let query = self.compile_query(
-                        &context,
-                        &mut value_generators,
-                        &event.query
-                    )?;
-                    // println!("{:#?}", query);
-
-                    let outputs = self.compile_output(
-                        &context,
-                        &mut value_generators,
-                        &event.outputs
-                    )?;
-                    // println!("{:#?}", outputs);
-
-                    self.compiled_events.push(
-                        CompiledEvent {
-                            id: event_id,
-                            sub_id: sub_query_id as u64,
-                            independent_metric: independent_metric_id,
-                            dependent_metric: dependent_metric_id,
-                            query,
-                            outputs
-                        }
-                    );
-
-                    for (value_id, used_metrics) in value_generators {
-                        // println!("{:?}: {:?}", self.value_generators[&value_id], used_metrics);
-
-                        if !used_metrics.is_empty() {
-                            for metric in used_metrics {
-                                self.value_generators_for_metric
-                                    .entry(metric)
-                                    .or_insert_with(|| Vec::new())
-                                    .push(value_id);
-                            }
-                        } else {
-                            self.value_generators_for_metric
-                                .entry(independent_metric_id)
-                                .or_insert_with(|| Vec::new())
-                                .push(value_id);
-
-                            self.value_generators_for_metric
-                                .entry(dependent_metric_id)
-                                .or_insert_with(|| Vec::new())
-                                .push(value_id);
-                        }
+                        dependent_metric: dependent_metric_id,
+                        query,
+                        outputs,
                     }
+                );
 
-                    sub_query_id += 1;
+                for (value_id, used_metrics) in value_generators {
+                    // println!("{:?}: {:?}", self.value_generators[&value_id], used_metrics);
+
+                    if !used_metrics.is_empty() {
+                        for metric in used_metrics {
+                            self.value_generators_for_metric
+                                .entry(metric)
+                                .or_insert_with(|| Vec::new())
+                                .push(value_id);
+                        }
+                    } else {
+                        self.value_generators_for_metric
+                            .entry(independent_metric_id)
+                            .or_insert_with(|| Vec::new())
+                            .push(value_id);
+
+                        self.value_generators_for_metric
+                            .entry(dependent_metric_id)
+                            .or_insert_with(|| Vec::new())
+                            .push(value_id);
+                    }
                 }
+
+                sub_query_id += 1;
             }
         }
 
