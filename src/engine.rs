@@ -44,6 +44,20 @@ impl EventEngine {
         Ok(event_id)
     }
 
+    pub fn recompile_events(&mut self, metric_definitions: &MetricDefinitions) -> EventResult<()> {
+        self.compiled_events.clear();
+
+        let events = std::mem::take(&mut self.events);
+        for (event_id, event) in &events {
+            self.compile_event(metric_definitions, *event_id, event)?;
+        }
+        self.events = events;
+
+        // TODO: remove not used values
+
+        Ok(())
+    }
+
     fn compile_event(&mut self, metric_definitions: &MetricDefinitions, event_id: EventId, event: &Event) -> EventResult<()> {
         let mut sub_query_id = 0;
         for dependent_metric in event.dependent_metric.iter() {
@@ -621,28 +635,14 @@ fn test_event_engine1() {
             ]
         }
     ).unwrap();
+    engine.recompile_events(&metric_definitions);
 
     println!();
 
     let events = Rc::new(RefCell::new(Vec::new()));
-    let on_event = |event_index, outputs: Vec<(String, Value)>| {
+    let on_event = |event_id, outputs: Vec<(String, Value)>| {
         events.borrow_mut().push(outputs.clone());
-
-        let mut output_string = String::new();
-        let mut is_first = true;
-        for (name, value) in outputs {
-            if !is_first {
-                output_string += ", ";
-            } else {
-                is_first = false;
-            }
-
-            output_string += &name;
-            output_string += "=";
-            output_string += &value.to_string();
-        }
-
-        println!("Event generated for #{}, {}", event_index, output_string);
+        print_output_for_test(event_id, outputs);
     };
 
     let mut values = MetricValues::new(TimeInterval::Minutes(1.0));
@@ -680,4 +680,143 @@ fn test_event_engine1() {
     assert_eq!("y", outputs[1].0); assert_approx_eq!(23.333333, outputs[1].1.float().unwrap());
     assert_eq!("cov", outputs[2].0); assert_approx_eq!(15.555555, outputs[2].1.float().unwrap());
     events.borrow_mut().clear();
+}
+
+#[test]
+fn test_event_engine2() {
+    use std::cell::RefCell;
+    use std::ops::Add;
+    use std::rc::Rc;
+    use std::time::{Duration};
+    use assert_approx_eq::assert_approx_eq;
+
+    let mut metric_definitions = MetricDefinitions::new();
+    let x = metric_definitions.define(MetricName::all("x"));
+    let y = metric_definitions.define(MetricName::all("y"));
+
+    let mut engine = EventEngine::new();
+
+    engine.add_event(
+        &metric_definitions,
+        Event {
+            independent_metric: MetricName::all("x"),
+            dependent_metric: vec![MetricName::all("y")],
+            query: EventQuery::And {
+                left: Box::new(
+                    EventQuery::Bool {
+                        left: Box::new(
+                            EventQuery::Expression(
+                                EventExpression::Covariance {
+                                    left: ValueExpression::IndependentMetric,
+                                    right: ValueExpression::DependentMetric,
+                                    interval: TimeInterval::Seconds(10.0)
+                                }
+                            )
+                        ),
+                        right: Box::new(
+                            EventQuery::Expression(EventExpression::Value(ValueExpression::Constant(0.0)))
+                        ),
+                        operator: BoolOperator::GreaterThan
+                    }
+                ),
+                right: Box::new(
+                    EventQuery::Bool {
+                        left: Box::new(
+                            EventQuery::Expression(
+                                EventExpression::Average {
+                                    value: ValueExpression::IndependentMetric,
+                                    interval: TimeInterval::Seconds(10.0)
+                                }
+                            )
+                        ),
+                        right: Box::new(
+                            EventQuery::Expression(EventExpression::Value(ValueExpression::Constant(0.0)))
+                        ),
+                        operator: BoolOperator::GreaterThan
+                    }
+                )
+            },
+            outputs: vec![
+                (
+                    EventOutputName::IndependentMetricName,
+                    EventExpression::Average { value: ValueExpression::IndependentMetric, interval: TimeInterval::Seconds(10.0) }
+                ),
+                (
+                    EventOutputName::DependentMetricName,
+                    EventExpression::Average { value: ValueExpression::DependentMetric, interval: TimeInterval::Seconds(10.0) }
+                ),
+                (
+                    EventOutputName::String("cov".to_owned()),
+                    EventExpression::Covariance {
+                        left: ValueExpression::IndependentMetric,
+                        right: ValueExpression::DependentMetric,
+                        interval: TimeInterval::Seconds(10.0)
+                    }
+                )
+            ]
+        }
+    ).unwrap();
+
+    println!();
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let on_event = |event_id, outputs: Vec<(String, Value)>| {
+        events.borrow_mut().push(outputs.clone());
+        print_output_for_test(event_id, outputs);
+    };
+
+    let mut values = MetricValues::new(TimeInterval::Minutes(1.0));
+
+    let t0 = TimePoint::now();
+    values.insert(t0, x, 1.0);
+    values.insert(t0, y, 10.0);
+    engine.handle_values(&metric_definitions, t0, &values, on_event);
+
+    assert_eq!(0, events.borrow_mut().len());
+    events.borrow_mut().clear();
+
+
+    let t1 = t0.add(Duration::from_secs_f64(2.0));
+    values.insert(t1, x, 2.0);
+    values.insert(t1, y, 20.0);
+    engine.handle_values(&metric_definitions, t1, &values, on_event);
+
+    assert_eq!(1, events.borrow_mut().len());
+    let outputs = events.borrow_mut().remove(0);
+    assert_eq!("x", outputs[0].0); assert_approx_eq!(1.5, outputs[0].1.float().unwrap());
+    assert_eq!("y", outputs[1].0); assert_approx_eq!(15.0, outputs[1].1.float().unwrap());
+    assert_eq!("cov", outputs[2].0); assert_approx_eq!(2.5, outputs[2].1.float().unwrap());
+    events.borrow_mut().clear();
+
+
+    let t2 = t0.add(Duration::from_secs_f64(4.0));
+    values.insert(t2, x, 4.0);
+    values.insert(t2, y, 40.0);
+    engine.handle_values(&metric_definitions, t2, &values, on_event);
+
+    assert_eq!(1, events.borrow_mut().len());
+    let outputs = events.borrow_mut().remove(0);
+    assert_eq!("x", outputs[0].0); assert_approx_eq!(2.3333333, outputs[0].1.float().unwrap());
+    assert_eq!("y", outputs[1].0); assert_approx_eq!(23.333333, outputs[1].1.float().unwrap());
+    assert_eq!("cov", outputs[2].0); assert_approx_eq!(15.555555, outputs[2].1.float().unwrap());
+    events.borrow_mut().clear();
+}
+
+#[cfg(test)]
+fn print_output_for_test(event_id: EventId, outputs: Vec<(String, Value)>) {
+    let mut output_string = String::new();
+    let mut is_first = true;
+    for (name, value) in outputs {
+        if !is_first {
+            output_string += ", ";
+        } else {
+            is_first = false;
+        }
+
+        output_string += &name;
+        output_string += "=";
+        output_string += &value.to_string();
+    }
+
+    println!("Event generated for #{}, {}", event_id, output_string);
 }
