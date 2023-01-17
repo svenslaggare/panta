@@ -1,4 +1,4 @@
-use std::fmt::{Display, Formatter};
+use std::fmt::{Display};
 use std::time::{Duration, Instant};
 
 pub type TimePoint = Instant;
@@ -10,23 +10,40 @@ pub struct ValueId(pub u64);
 pub struct MetricId(pub u64);
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct MetricReference {
+pub struct MetricName {
     pub name: String,
     pub sub: Option<String>
 }
 
-impl MetricReference {
-    pub fn all(name: &str) -> MetricReference {
-        MetricReference {
+impl MetricName {
+    pub fn all(name: &str) -> MetricName {
+        MetricName {
             name: name.to_owned(),
             sub: None
         }
     }
 
-    pub fn sub(name: &str, sub: &str) -> MetricReference {
-        MetricReference {
+    pub fn sub(name: &str, sub: &str) -> MetricName {
+        MetricName {
             name: name.to_owned(),
             sub: Some(sub.to_owned())
+        }
+    }
+
+    pub fn as_all(&self) -> MetricName {
+        MetricName {
+            name: self.name.clone(),
+            sub: None
+        }
+    }
+}
+
+impl Display for MetricName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(sub) = self.sub.as_ref() {
+            write!(f, "{}:{}", self.name, sub)
+        } else {
+            write!(f, "{}", self.name)
         }
     }
 }
@@ -71,7 +88,7 @@ impl Value {
 }
 
 impl Display for Value {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Value::Float(value) => write!(f, "{}", value),
             Value::Bool(value) => write!(f, "{}", value),
@@ -84,7 +101,7 @@ pub enum EventError {
     FailedToCollectSystemMetric(std::io::Error),
     FailedToCollectRabbitMQMetric(reqwest::Error),
     FailedToCompileMetric,
-    MetricNotFound(MetricReference)
+    MetricNotFound(MetricName)
 }
 
 pub type EventResult<T> = Result<T, EventError>;

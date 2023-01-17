@@ -5,7 +5,7 @@ use crate::aggregator::{AggregateOperations, AverageAggregate, CorrelationAggreg
 use crate::event::{ArithmeticOperator, BoolOperator, Event, EventExpression, EventId, EventOutputName, EventQuery, Function, ValueExpression};
 use crate::metrics::{MetricDefinitions, MetricValues};
 
-use crate::model::{EventResult, MetricId, MetricReference, TimeInterval, TimePoint, Value, ValueId};
+use crate::model::{EventResult, MetricId, MetricName, TimeInterval, TimePoint, Value, ValueId};
 
 pub struct EventEngine {
     next_event_id: EventId,
@@ -37,61 +37,66 @@ impl EventEngine {
     pub fn add_event(&mut self, metric_definitions: &MetricDefinitions, event: Event) -> EventResult<EventId> {
         let event_id = self.next_event_id;
 
-        for (dependent_metric_index, dependent_metric) in event.dependent_metric.into_iter().enumerate() {
-            let mut value_generators = Vec::new();
-            let independent_metric_id = metric_definitions.get_id_result(&event.independent_metric)?;
-            let dependent_metric_id = metric_definitions.get_id_result(&dependent_metric)?;
+        let mut sub_query_id = 0;
+        for dependent_metric in event.dependent_metric.into_iter() {
+            for independent_metric_id in metric_definitions.expand(&event.independent_metric)? {
+                for dependent_metric_id in metric_definitions.expand(&dependent_metric)? {
+                    let mut value_generators = Vec::new();
 
-            let context = CompileEventContext {
-                independent_metric: independent_metric_id,
-                dependent_metric: dependent_metric_id
-            };
-            
-            let query = self.compile_query(
-                &context,
-                &mut value_generators,
-                &event.query
-            )?;
-            // println!("{:#?}", query);
+                    let context = CompileEventContext {
+                        independent_metric: independent_metric_id,
+                        dependent_metric: dependent_metric_id
+                    };
 
-            let outputs = self.compile_output(
-                &context,
-                &mut value_generators,
-                &event.outputs
-            )?;
-            // println!("{:#?}", outputs);
+                    let query = self.compile_query(
+                        &context,
+                        &mut value_generators,
+                        &event.query
+                    )?;
+                    // println!("{:#?}", query);
 
-            self.events.push(
-                CompiledEvent {
-                    id: event_id,
-                    sub_id: dependent_metric_index as u64,
-                    independent_metric: independent_metric_id,
-                    dependent_metric: dependent_metric_id,
-                    query,
-                    outputs
-                }
-            );
+                    let outputs = self.compile_output(
+                        &context,
+                        &mut value_generators,
+                        &event.outputs
+                    )?;
+                    // println!("{:#?}", outputs);
 
-            for (value_id, used_metrics) in value_generators {
-                // println!("{:?}: {:?}", self.value_generators[&value_id], used_metrics);
+                    self.events.push(
+                        CompiledEvent {
+                            id: event_id,
+                            sub_id: sub_query_id as u64,
+                            independent_metric: independent_metric_id,
+                            dependent_metric: dependent_metric_id,
+                            query,
+                            outputs
+                        }
+                    );
 
-                if !used_metrics.is_empty() {
-                    for metric in used_metrics {
-                        self.value_generators_for_metric
-                            .entry(metric)
-                            .or_insert_with(|| Vec::new())
-                            .push(value_id);
+                    for (value_id, used_metrics) in value_generators {
+                        // println!("{:?}: {:?}", self.value_generators[&value_id], used_metrics);
+
+                        if !used_metrics.is_empty() {
+                            for metric in used_metrics {
+                                self.value_generators_for_metric
+                                    .entry(metric)
+                                    .or_insert_with(|| Vec::new())
+                                    .push(value_id);
+                            }
+                        } else {
+                            self.value_generators_for_metric
+                                .entry(independent_metric_id)
+                                .or_insert_with(|| Vec::new())
+                                .push(value_id);
+
+                            self.value_generators_for_metric
+                                .entry(dependent_metric_id)
+                                .or_insert_with(|| Vec::new())
+                                .push(value_id);
+                        }
                     }
-                } else {
-                    self.value_generators_for_metric
-                        .entry(independent_metric_id)
-                        .or_insert_with(|| Vec::new())
-                        .push(value_id);
 
-                    self.value_generators_for_metric
-                        .entry(dependent_metric_id)
-                        .or_insert_with(|| Vec::new())
-                        .push(value_id);
+                    sub_query_id += 1;
                 }
             }
         }
@@ -329,8 +334,8 @@ impl EventEngine {
             .map(|(name, expression)| {
                 let name = match name {
                     EventOutputName::String(str) => str.clone(),
-                    EventOutputName::IndependentMetricName => metric_definitions.get_name(event.independent_metric).unwrap().to_owned(),
-                    EventOutputName::DependentMetricName => metric_definitions.get_name(event.dependent_metric).unwrap().to_owned(),
+                    EventOutputName::IndependentMetricName => metric_definitions.get_specific_name(event.independent_metric).unwrap().to_string(),
+                    EventOutputName::DependentMetricName => metric_definitions.get_specific_name(event.dependent_metric).unwrap().to_string(),
                 };
 
                 self.evaluate_expression(values, expression).map(|value| (name, value))
@@ -545,16 +550,16 @@ fn test_event_engine1() {
     use assert_approx_eq::assert_approx_eq;
 
     let mut metric_definitions = MetricDefinitions::new();
-    let x = metric_definitions.define("x");
-    let y = metric_definitions.define("y");
+    let x = metric_definitions.define(MetricName::all("x"));
+    let y = metric_definitions.define(MetricName::all("y"));
 
     let mut engine = EventEngine::new();
 
     engine.add_event(
         &metric_definitions,
         Event {
-            independent_metric: MetricReference::all("x"),
-            dependent_metric: vec![MetricReference::all("y")],
+            independent_metric: MetricName::all("x"),
+            dependent_metric: vec![MetricName::all("y")],
             query: EventQuery::And {
                 left: Box::new(
                     EventQuery::Bool {

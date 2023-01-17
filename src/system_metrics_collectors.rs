@@ -7,7 +7,7 @@ use std::time::Instant;
 use fnv::FnvHashMap;
 
 use crate::metrics::{MetricDefinitions, MetricValues};
-use crate::model::{EventError, EventResult, MetricId, TimeInterval, TimePoint};
+use crate::model::{EventError, EventResult, MetricId, MetricName, TimeInterval, TimePoint};
 
 pub trait SystemMetricCollector {
     fn new(metric_definitions: &mut MetricDefinitions) -> EventResult<Self> where Self: Sized;
@@ -50,7 +50,7 @@ impl SystemMetricCollector for CpuUsageCollector {
         let mut prev_values = FnvHashMap::default();
         let content = CpuUsageCollector::get_cpu_content()?;
         for (core_name, (total, idle)) in CpuUsageCollector::get_cpu_values(&content) {
-            let metric_id = metric_definitions.define(&format!("system.cpu_usage:{}", core_name));
+            let metric_id = metric_definitions.define(MetricName::sub("system.cpu_usage", &core_name));
             prev_values.insert(core_name.to_owned(), (metric_id, total, idle));
         }
 
@@ -126,12 +126,12 @@ impl SystemMetricCollector for MemoryUsageCollector {
     fn new(metric_definitions: &mut MetricDefinitions) -> EventResult<MemoryUsageCollector> {
         Ok(
             MemoryUsageCollector {
-                total_memory_metric: metric_definitions.define("system.total_memory"),
-                used_memory_metric: metric_definitions.define("system.used_memory"),
-                used_memory_ratio_metric: metric_definitions.define("system.used_memory_ratio"),
-                used_memory_rate_metric: metric_definitions.define("system.used_memory_rate"),
-                available_memory_metric: metric_definitions.define("system.available_memory"),
-                available_memory_metric_ratio: metric_definitions.define("system.available_memory_ratio"),
+                total_memory_metric: metric_definitions.define(MetricName::all("system.total_memory")),
+                used_memory_metric: metric_definitions.define(MetricName::all("system.used_memory")),
+                used_memory_ratio_metric: metric_definitions.define(MetricName::all("system.used_memory_ratio")),
+                used_memory_rate_metric: metric_definitions.define(MetricName::all("system.used_memory_rate")),
+                available_memory_metric: metric_definitions.define(MetricName::all("system.available_memory")),
+                available_memory_metric_ratio: metric_definitions.define(MetricName::all("system.available_memory_ratio")),
                 prev_memory_usage: Some((Instant::now(), MemoryUsageCollector::get_memory_usage()?))
             }
         )
@@ -205,10 +205,10 @@ impl SystemMetricCollector for DiskIOStatsCollector {
         let content = DiskIOStatsCollector::get_disk_content()?;
         for (disk, disk_stats) in DiskIOStatsCollector::get_disk_stats_values(&content) {
             let disk_stats_metrics = DiskStatsMetrics {
-                read_operations_metric: metric_definitions.define(&format!("system.disk_read_operations:{}", disk)),
-                read_bytes_metric: metric_definitions.define(&format!("system.disk_read_bytes:{}", disk)),
-                write_operations_metric: metric_definitions.define(&format!("system.disk_write_operations:{}", disk)),
-                write_bytes_metric: metric_definitions.define(&format!("system.disk_write_bytes:{}", disk))
+                read_operations_metric: metric_definitions.define(MetricName::sub("system.disk_read_operations", disk)),
+                read_bytes_metric: metric_definitions.define(MetricName::sub("system.disk_read_bytes", disk)),
+                write_operations_metric: metric_definitions.define(MetricName::sub("system.disk_write_operations", disk)),
+                write_bytes_metric: metric_definitions.define(MetricName::sub("system.disk_write_bytes", disk))
             };
             
             prev_values.insert(disk.to_owned(), (disk_stats_metrics, disk_stats));
@@ -344,10 +344,10 @@ impl SystemMetricCollector for DiskUsageCollector {
                 disk.to_owned(),
                 DiskUsageEntry {
                     mount: CString::new(mount).unwrap(),
-                    total_disk_metric: metric_definitions.define(&format!("system.total_disk:{}", disk)),
-                    used_disk_metric: metric_definitions.define(&format!("system.used_disk:{}", disk)),
-                    used_disk_ratio_metric: metric_definitions.define(&format!("system.used_disk_ratio:{}", disk)),
-                    free_disk_metric: metric_definitions.define(&format!("system.free_disk:{}", disk))
+                    total_disk_metric: metric_definitions.define(MetricName::sub("system.total_disk", disk)),
+                    used_disk_metric: metric_definitions.define(MetricName::sub("system.used_disk", disk)),
+                    used_disk_ratio_metric: metric_definitions.define(MetricName::sub("system.used_disk_ratio", disk)),
+                    free_disk_metric: metric_definitions.define(MetricName::sub("system.free_disk", disk))
                 }
             );
         }
@@ -421,7 +421,7 @@ fn test_system_metrics_collector1() {
     system_metrics_collector.collect(TimePoint::now(), &mut metrics).unwrap();
 
     for (metric, value) in metrics.iter() {
-        println!("{}: {}", metric_definitions.get_name(metric).unwrap(), value)
+        println!("{}: {}", metric_definitions.get_specific_name(metric).unwrap(), value)
     }
 }
 
@@ -436,10 +436,10 @@ fn test_cpu_collector1() {
     cpu_usage_collector.collect(TimePoint::now(), &mut metrics).unwrap();
 
     for (metric, value) in metrics.iter() {
-        println!("{}: {}", metric_definitions.get_name(metric).unwrap(), value)
+        println!("{}: {}", metric_definitions.get_specific_name(metric).unwrap(), value)
     }
 
-    assert_ne!(Some(&0.0), metrics.get(&metric_definitions.get_id("system.cpu_usage:all").unwrap()));
+    assert_ne!(Some(&0.0), metrics.get(&metric_definitions.get_specific_id(&MetricName::sub("system.cpu_usage", "all")).unwrap()));
 }
 
 #[test]
@@ -453,10 +453,10 @@ fn test_memory_collector1() {
     memory_usage_collector.collect(TimePoint::now(), &mut metrics).unwrap();
 
     for (metric, value) in metrics.iter() {
-        println!("{}: {}", metric_definitions.get_name(metric).unwrap(), value)
+        println!("{}: {}", metric_definitions.get_specific_name(metric).unwrap(), value)
     }
 
-    assert_ne!(Some(&0.0), metrics.get(&metric_definitions.get_id("system.used_memory_ratio").unwrap()));
+    assert_ne!(Some(&0.0), metrics.get(&metric_definitions.get_specific_id(&MetricName::all("system.used_memory_ratio")).unwrap()));
 }
 
 #[test]
@@ -470,7 +470,7 @@ fn test_disk_io_stats_collector1() {
     disk_io_stats_collector.collect(TimePoint::now(), &mut metrics).unwrap();
 
     for (metric, value) in metrics.iter() {
-        println!("{}: {}", metric_definitions.get_name(metric).unwrap(), value)
+        println!("{}: {}", metric_definitions.get_specific_name(metric).unwrap(), value)
     }
 }
 
@@ -483,6 +483,6 @@ fn test_disk_usage_collector1() {
     disk_usage_collector.collect(TimePoint::now(), &mut metrics).unwrap();
 
     for (metric, value) in metrics.iter() {
-        println!("{}: {}", metric_definitions.get_name(metric).unwrap(), value)
+        println!("{}: {}", metric_definitions.get_specific_name(metric).unwrap(), value)
     }
 }

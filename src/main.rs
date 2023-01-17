@@ -23,7 +23,7 @@ use crate::engine::EventEngine;
 use crate::event::{BoolOperator, Event, EventExpression, EventOutputName, EventQuery, ValueExpression};
 use crate::event_output::{ConsoleEventOutputHandler, EventOutputHandlers};
 use crate::metrics::{MetricDefinitions, MetricValues};
-use crate::model::{MetricReference, TimeInterval, TimePoint, Value};
+use crate::model::{MetricName, TimeInterval, TimePoint, Value};
 use crate::rabbitmq_metrics_collector::RabbitMQStatsCollector;
 use crate::system_metrics_collectors::SystemMetricsCollector;
 
@@ -86,7 +86,7 @@ async fn main() {
             while let Ok(custom_metric) = custom_metrics_receiver.try_recv() {
                 match custom_metric {
                     CustomMetric::Gauge { name, value } => {
-                        let metric_id = metric_definitions.define(&name);
+                        let metric_id = metric_definitions.define(MetricName::all(&name));
                         values.insert(metric_time, metric_id, value);
                     }
                 }
@@ -135,12 +135,12 @@ fn add_events(metric_definitions: &MetricDefinitions, engine: &mut EventEngine) 
     engine.add_event(
         metric_definitions,
         Event {
-            independent_metric: MetricReference::sub("system.cpu_usage", "all"),
+            independent_metric: MetricName::sub("system.cpu_usage", "all"),
             dependent_metric: vec![
-                MetricReference::all("system.used_memory"),
-                MetricReference::sub("system.disk_read_bytes", "sda2"),
-                MetricReference::sub("system.disk_write_bytes", "sda2"),
-                MetricReference::sub("rabbitmq.publish_rate", "panta_test_queue")
+                MetricName::all("system.used_memory"),
+                MetricName::all("system.disk_read_bytes"),
+                MetricName::all("system.disk_write_bytes"),
+                MetricName::all("rabbitmq.publish_rate")
             ],
             query: EventQuery::And {
                 left: Box::new(
