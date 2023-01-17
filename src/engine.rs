@@ -5,7 +5,7 @@ use crate::aggregator::{AggregateOperations, AverageAggregate, CorrelationAggreg
 use crate::event::{ArithmeticOperator, BoolOperator, Event, EventExpression, EventId, EventOutputName, EventQuery, Function, ValueExpression};
 use crate::metrics::{MetricDefinitions, MetricValues};
 
-use crate::model::{EventResult, MetricId, TimeInterval, TimePoint, Value, ValueId};
+use crate::model::{EventResult, MetricId, MetricReference, TimeInterval, TimePoint, Value, ValueId};
 
 pub struct EventEngine {
     next_event_id: EventId,
@@ -34,15 +34,17 @@ impl EventEngine {
         }
     }
 
-    pub fn add_event(&mut self, event: Event) -> EventResult<EventId> {
+    pub fn add_event(&mut self, metric_definitions: &MetricDefinitions, event: Event) -> EventResult<EventId> {
         let event_id = self.next_event_id;
 
         for (dependent_metric_index, dependent_metric) in event.dependent_metric.into_iter().enumerate() {
             let mut value_generators = Vec::new();
+            let independent_metric_id = metric_definitions.get_id_result(&event.independent_metric)?;
+            let dependent_metric_id = metric_definitions.get_id_result(&dependent_metric)?;
 
             let context = CompileEventContext {
-                independent_metric: event.independent_metric,
-                dependent_metric
+                independent_metric: independent_metric_id,
+                dependent_metric: dependent_metric_id
             };
             
             let query = self.compile_query(
@@ -63,8 +65,8 @@ impl EventEngine {
                 CompiledEvent {
                     id: event_id,
                     sub_id: dependent_metric_index as u64,
-                    independent_metric: event.independent_metric,
-                    dependent_metric,
+                    independent_metric: independent_metric_id,
+                    dependent_metric: dependent_metric_id,
                     query,
                     outputs
                 }
@@ -82,12 +84,12 @@ impl EventEngine {
                     }
                 } else {
                     self.value_generators_for_metric
-                        .entry(event.independent_metric)
+                        .entry(independent_metric_id)
                         .or_insert_with(|| Vec::new())
                         .push(value_id);
 
                     self.value_generators_for_metric
-                        .entry(dependent_metric)
+                        .entry(dependent_metric_id)
                         .or_insert_with(|| Vec::new())
                         .push(value_id);
                 }
@@ -549,9 +551,10 @@ fn test_event_engine1() {
     let mut engine = EventEngine::new();
 
     engine.add_event(
+        &metric_definitions,
         Event {
-            independent_metric: x,
-            dependent_metric: vec![y],
+            independent_metric: MetricReference::all("x"),
+            dependent_metric: vec![MetricReference::all("y")],
             query: EventQuery::And {
                 left: Box::new(
                     EventQuery::Bool {

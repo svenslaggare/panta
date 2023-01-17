@@ -1,7 +1,7 @@
 use std::time::Duration;
 use fnv::FnvHashMap;
 
-use crate::model::{MetricId, TimeInterval, TimePoint};
+use crate::model::{EventError, EventResult, MetricId, MetricReference, TimeInterval, TimePoint};
 
 pub struct MetricDefinitions {
     next_metric_id: MetricId,
@@ -31,6 +31,12 @@ impl MetricDefinitions {
 
     pub fn get_id(&self, name: &str) -> Option<MetricId> {
         self.metrics.get(name).cloned()
+    }
+
+    pub fn get_id_result(&self, metric: &MetricReference) -> EventResult<MetricId> {
+        self.metrics.get(&metric.name)
+            .cloned()
+            .ok_or_else(|| EventError::MetricNotFound(metric.clone()))
     }
 
     pub fn get_name(&self, id: MetricId) -> Option<&str> {

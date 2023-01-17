@@ -9,6 +9,28 @@ pub struct ValueId(pub u64);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct MetricId(pub u64);
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct MetricReference {
+    pub name: String,
+    pub sub: Option<String>
+}
+
+impl MetricReference {
+    pub fn all(name: &str) -> MetricReference {
+        MetricReference {
+            name: name.to_owned(),
+            sub: None
+        }
+    }
+
+    pub fn sub(name: &str, sub: &str) -> MetricReference {
+        MetricReference {
+            name: name.to_owned(),
+            sub: Some(sub.to_owned())
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum TimeInterval {
     Seconds(f64),
@@ -61,7 +83,8 @@ impl Display for Value {
 pub enum EventError {
     FailedToCollectSystemMetric(std::io::Error),
     FailedToCollectRabbitMQMetric(reqwest::Error),
-    FailedToCompileMetric
+    FailedToCompileMetric,
+    MetricNotFound(MetricReference)
 }
 
 pub type EventResult<T> = Result<T, EventError>;

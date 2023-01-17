@@ -12,7 +12,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use log::{error, info, trace};
+use log::{error, trace};
 
 use tokio::sync::mpsc;
 use tokio::task;
@@ -23,7 +23,7 @@ use crate::engine::EventEngine;
 use crate::event::{BoolOperator, Event, EventExpression, EventOutputName, EventQuery, ValueExpression};
 use crate::event_output::{ConsoleEventOutputHandler, EventOutputHandlers};
 use crate::metrics::{MetricDefinitions, MetricValues};
-use crate::model::{TimeInterval, TimePoint, Value};
+use crate::model::{MetricReference, TimeInterval, TimePoint, Value};
 use crate::rabbitmq_metrics_collector::RabbitMQStatsCollector;
 use crate::system_metrics_collectors::SystemMetricsCollector;
 
@@ -133,13 +133,14 @@ fn add_events(metric_definitions: &MetricDefinitions, engine: &mut EventEngine) 
     let interval = TimeInterval::Seconds(5.0);
 
     engine.add_event(
+        metric_definitions,
         Event {
-            independent_metric: metric_definitions.get_id("system.cpu_usage:all").unwrap(),
+            independent_metric: MetricReference::sub("system.cpu_usage", "all"),
             dependent_metric: vec![
-                metric_definitions.get_id("system.used_memory").unwrap(),
-                metric_definitions.get_id("system.disk_read_bytes:sda2").unwrap(),
-                metric_definitions.get_id("system.disk_write_bytes:sda2").unwrap(),
-                metric_definitions.get_id("rabbitmq.publish_rate:panta_test_queue").unwrap()
+                MetricReference::all("system.used_memory"),
+                MetricReference::sub("system.disk_read_bytes", "sda2"),
+                MetricReference::sub("system.disk_write_bytes", "sda2"),
+                MetricReference::sub("rabbitmq.publish_rate", "panta_test_queue")
             ],
             query: EventQuery::And {
                 left: Box::new(

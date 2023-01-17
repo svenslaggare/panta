@@ -70,17 +70,18 @@ impl RabbitMQStatsCollector {
                 metrics.insert(time, queue_entry.message_ready_count_metric, queue_info.messages_ready.unwrap_or(0) as f64);
                 metrics.insert(time, queue_entry.message_ready_rate_metric, queue_info.messages_ready_details.map(|d| d.rate).unwrap_or(0.0));
 
-                metrics.insert(time, queue_entry.publish_count_metric, queue_info.message_stats.publish.unwrap_or(0) as f64);
-                metrics.insert(time, queue_entry.publish_rate_metric, queue_info.message_stats.publish_details.map(|d| d.rate).unwrap_or(0.0));
+                let message_stats = queue_info.message_stats.unwrap_or_else(|| RabbitMQMessageStats::default());
+                metrics.insert(time, queue_entry.publish_count_metric, message_stats.publish.unwrap_or(0) as f64);
+                metrics.insert(time, queue_entry.publish_rate_metric, message_stats.publish_details.map(|d| d.rate).unwrap_or(0.0));
 
-                metrics.insert(time, queue_entry.ack_count_metric, queue_info.message_stats.ack.unwrap_or(0) as f64);
-                metrics.insert(time, queue_entry.ack_rate_metric, queue_info.message_stats.ack_details.map(|d| d.rate).unwrap_or(0.0));
+                metrics.insert(time, queue_entry.ack_count_metric, message_stats.ack.unwrap_or(0) as f64);
+                metrics.insert(time, queue_entry.ack_rate_metric, message_stats.ack_details.map(|d| d.rate).unwrap_or(0.0));
 
-                metrics.insert(time, queue_entry.deliver_count_metric, queue_info.message_stats.deliver.unwrap_or(0) as f64);
-                metrics.insert(time, queue_entry.deliver_rate_metric, queue_info.message_stats.deliver_details.map(|d| d.rate).unwrap_or(0.0));
+                metrics.insert(time, queue_entry.deliver_count_metric, message_stats.deliver.unwrap_or(0) as f64);
+                metrics.insert(time, queue_entry.deliver_rate_metric, message_stats.deliver_details.map(|d| d.rate).unwrap_or(0.0));
 
-                metrics.insert(time, queue_entry.redeliver_count_metric, queue_info.message_stats.redeliver.unwrap_or(0) as f64);
-                metrics.insert(time, queue_entry.redeliver_rate_metric, queue_info.message_stats.redeliver_details.map(|d| d.rate).unwrap_or(0.0));
+                metrics.insert(time, queue_entry.redeliver_count_metric, message_stats.redeliver.unwrap_or(0) as f64);
+                metrics.insert(time, queue_entry.redeliver_rate_metric, message_stats.redeliver_details.map(|d| d.rate).unwrap_or(0.0));
 
                 metrics.insert(time, queue_entry.unacknowledged_count_metric, queue_info.messages_unacknowledged.unwrap_or(0) as f64);
                 metrics.insert(time, queue_entry.unacknowledged_rate_metric, queue_info.messages_unacknowledged_details.map(|d| d.rate).unwrap_or(0.0));
@@ -154,7 +155,7 @@ struct RabbitMQQueueInfo {
     messages_ready_details: Option<RabbitMQDetails>,
     messages_unacknowledged: Option<u64>,
     messages_unacknowledged_details: Option<RabbitMQDetails>,
-    message_stats: RabbitMQMessageStats,
+    message_stats: Option<RabbitMQMessageStats>,
     consumer_utilisation: f64
 }
 
@@ -168,6 +169,21 @@ struct RabbitMQMessageStats {
     deliver_details: Option<RabbitMQDetails>,
     redeliver: Option<u64>,
     redeliver_details: Option<RabbitMQDetails>,
+}
+
+impl Default for RabbitMQMessageStats {
+    fn default() -> Self {
+        RabbitMQMessageStats {
+            publish: None,
+            publish_details: None,
+            ack: None,
+            ack_details: None,
+            deliver: None,
+            deliver_details: None,
+            redeliver: None,
+            redeliver_details: None
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]

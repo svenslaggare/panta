@@ -1,6 +1,6 @@
 use std::fmt::{Display, Formatter};
 
-use crate::model::{MetricId, TimeInterval, Value};
+use crate::model::{MetricReference, TimeInterval, Value};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EventId(pub u64);
@@ -13,8 +13,8 @@ impl Display for EventId {
 
 #[derive(Debug)]
 pub struct Event {
-    pub independent_metric: MetricId,
-    pub dependent_metric: Vec<MetricId>,
+    pub independent_metric: MetricReference,
+    pub dependent_metric: Vec<MetricReference>,
     pub query: EventQuery,
     pub outputs: Vec<(EventOutputName, EventExpression)>
 }
