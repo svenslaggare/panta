@@ -25,7 +25,7 @@ impl MetricDefinitions {
     pub fn define(&mut self, metric: MetricName) -> MetricId {
         let metric_name = metric.name.clone();
 
-        if metric.sub.is_some() {
+        if metric.is_specific() {
             self.define_internal(metric.as_all());
             let metric_id_full = self.define_internal(metric);
 
@@ -59,7 +59,7 @@ impl MetricDefinitions {
     }
 
     pub fn expand(&self, metric: &MetricName) -> EventResult<Vec<MetricId>> {
-        if metric.sub.is_some() {
+        if metric.is_specific() {
             Ok(vec![self.get_specific_id(metric)?])
         } else {
             let sub_metrics = self.metrics

@@ -43,6 +43,10 @@ impl MetricName {
             sub: None
         }
     }
+
+    pub fn is_specific(&self) -> bool {
+        self.sub.is_some()
+    }
 }
 
 impl Display for MetricName {
