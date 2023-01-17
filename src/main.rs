@@ -3,9 +3,7 @@ mod event;
 mod metrics;
 mod aggregator;
 mod engine;
-mod system_metrics_collectors;
-mod rabbitmq_metrics_collector;
-mod custom_metrics_collector;
+mod collectors;
 mod event_output;
 
 use std::cell::RefCell;
@@ -17,15 +15,16 @@ use log::{error, trace};
 use tokio::sync::mpsc;
 use tokio::task;
 
-use crate::custom_metrics_collector::{CustomMetric, CustomMetricsCollector};
+use crate::collectors::custom_metrics::{CustomMetric, CustomMetricsCollector};
+use crate::collectors::rabbitmq_metrics::RabbitMQStatsCollector;
+use crate::collectors::system_metrics::SystemMetricsCollector;
 
 use crate::engine::EventEngine;
 use crate::event::{BoolOperator, Event, EventExpression, EventOutputName, EventQuery, ValueExpression};
 use crate::event_output::{ConsoleEventOutputHandler, EventOutputHandlers};
 use crate::metrics::{MetricDefinitions, MetricValues};
 use crate::model::{MetricName, TimeInterval, TimePoint, Value};
-use crate::rabbitmq_metrics_collector::RabbitMQStatsCollector;
-use crate::system_metrics_collectors::SystemMetricsCollector;
+
 
 #[tokio::main]
 async fn main() {
