@@ -6,7 +6,7 @@ use crate::model::{EventResult, Value};
 pub trait EventOutputHandler {
     fn handle_output(&mut self,
                      event_id: &EventId,
-                     values: &Vec<(String, Value)>) -> EventResult<()>;
+                     outputs: &Vec<(String, Value)>) -> EventResult<()>;
 }
 
 pub type BoxEventOutputHandler = Box<dyn EventOutputHandler>;
@@ -50,22 +50,27 @@ impl ConsoleEventOutputHandler {
 }
 
 impl EventOutputHandler for ConsoleEventOutputHandler {
-    fn handle_output(&mut self, event_id: &EventId, values: &Vec<(String, Value)>) -> EventResult<()> {
-        let mut output_string = String::new();
-        let mut is_first = true;
-        for (name, value) in values {
-            if !is_first {
-                output_string += ", ";
-            } else {
-                is_first = false;
-            }
-
-            output_string += &name;
-            output_string += "=";
-            output_string += &value.to_string();
-        }
-
+    fn handle_output(&mut self, event_id: &EventId, outputs: &Vec<(String, Value)>) -> EventResult<()> {
+        let output_string = join_event_output(outputs);
         info!("Event generated for #{}, {}", event_id, output_string);
         Ok(())
     }
+}
+
+pub fn join_event_output(outputs: &Vec<(String, Value)>) -> String {
+    let mut output_string = String::new();
+    let mut is_first = true;
+    for (name, value) in outputs {
+        if !is_first {
+            output_string += ", ";
+        } else {
+            is_first = false;
+        }
+
+        output_string += &name;
+        output_string += "=";
+        output_string += &value.to_string();
+    }
+
+    output_string
 }

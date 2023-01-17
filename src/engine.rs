@@ -3,6 +3,7 @@ use fnv::{FnvHashMap, FnvHashSet};
 
 use crate::aggregator::{AggregateOperations, AverageAggregate, CorrelationAggregate, CovarianceAggregate, VarianceAggregate};
 use crate::event::{ArithmeticOperator, BoolOperator, Event, EventExpression, EventId, EventOutputName, EventQuery, Function, ValueExpression};
+use crate::event_output::join_event_output;
 use crate::metrics::{MetricDefinitions, MetricValues};
 
 use crate::model::{EventResult, MetricId, MetricName, TimeInterval, TimePoint, Value, ValueId};
@@ -642,7 +643,7 @@ fn test_event_engine1() {
     let events = Rc::new(RefCell::new(Vec::new()));
     let on_event = |event_id, outputs: Vec<(String, Value)>| {
         events.borrow_mut().push(outputs.clone());
-        print_output_for_test(event_id, outputs);
+        print_output_for_test(event_id, &outputs);
     };
 
     let mut values = MetricValues::new(TimeInterval::Minutes(1.0));
@@ -762,7 +763,7 @@ fn test_event_engine2() {
     let events = Rc::new(RefCell::new(Vec::new()));
     let on_event = |event_id, outputs: Vec<(String, Value)>| {
         events.borrow_mut().push(outputs.clone());
-        print_output_for_test(event_id, outputs);
+        print_output_for_test(event_id, &outputs);
     };
 
     let mut values = MetricValues::new(TimeInterval::Minutes(1.0));
@@ -803,20 +804,7 @@ fn test_event_engine2() {
 }
 
 #[cfg(test)]
-fn print_output_for_test(event_id: EventId, outputs: Vec<(String, Value)>) {
-    let mut output_string = String::new();
-    let mut is_first = true;
-    for (name, value) in outputs {
-        if !is_first {
-            output_string += ", ";
-        } else {
-            is_first = false;
-        }
-
-        output_string += &name;
-        output_string += "=";
-        output_string += &value.to_string();
-    }
-
+fn print_output_for_test(event_id: EventId, outputs: &Vec<(String, Value)>) {
+    let output_string = join_event_output(outputs);
     println!("Event generated for #{}, {}", event_id, output_string);
 }
