@@ -45,13 +45,13 @@ async fn main() {
         ).await.unwrap();
         let rabbitmq_metrics_collector = Rc::new(RefCell::new(rabbitmq_metrics_collector));
 
-        add_events(&metric_definitions, &mut engine);
-
         let (custom_metrics_sender, mut custom_metrics_receiver) = mpsc::unbounded_channel();
         let custom_metrics_collector = CustomMetricsCollector::new(custom_metrics_sender).unwrap();
         task::spawn_local(async move {
             custom_metrics_collector.collect().await.unwrap();
         });
+
+        add_events(&metric_definitions, &mut engine);
 
         let mut event_output_handlers = EventOutputHandlers::new();
         event_output_handlers.add_handler(Box::new(ConsoleEventOutputHandler::new()));
