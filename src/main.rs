@@ -85,8 +85,8 @@ async fn main() {
 
             while let Ok(custom_metric) = custom_metrics_receiver.try_recv() {
                 match custom_metric {
-                    CustomMetric::Gauge { name, value } => {
-                        let metric_id = metric_definitions.define(MetricName::all(&name));
+                    CustomMetric::Gauge { name, value, sub } => {
+                        let metric_id = metric_definitions.define(MetricName::new(&name, sub.as_ref().map(|x| x.as_str())));
                         values.insert(metric_time, metric_id, value);
                     }
                 }

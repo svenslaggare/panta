@@ -30,6 +30,13 @@ impl MetricName {
         }
     }
 
+    pub fn new(name: &str, sub: Option<&str>) -> MetricName {
+        MetricName {
+            name: name.to_owned(),
+            sub: sub.map(|sub| sub.to_owned())
+        }
+    }
+
     pub fn as_all(&self) -> MetricName {
         MetricName {
             name: self.name.clone(),

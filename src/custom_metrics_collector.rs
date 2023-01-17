@@ -54,12 +54,12 @@ impl CustomMetricsCollector {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum CustomMetric {
-    Gauge { name: String, value: f64 }
+    Gauge { name: String, value: f64, sub: Option<String> }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum CustomMetricParseError {
     InvalidType(String),
     ParseFloatError(ParseFloatError)
@@ -72,11 +72,14 @@ impl FromStr for CustomMetric {
         let mut name = String::new();
         let mut value = String::new();
         let mut metric_type = String::new();
+        let mut sub = String::new();
+        let mut has_sub = false;
 
         enum State {
             Name,
             Value,
-            Type
+            Type,
+            Sub
         }
 
         let mut state = State::Name;
@@ -97,7 +100,15 @@ impl FromStr for CustomMetric {
                     }
                 }
                 State::Type => {
-                    metric_type.push(current);
+                    if current == '#' {
+                        state = State::Sub;
+                        has_sub = true;
+                    } else {
+                        metric_type.push(current);
+                    }
+                }
+                State::Sub => {
+                    sub.push(current);
                 }
             }
         }
@@ -107,7 +118,8 @@ impl FromStr for CustomMetric {
                 Ok(
                     CustomMetric::Gauge {
                         name,
-                        value: f64::from_str(&value).map_err(|err| CustomMetricParseError::ParseFloatError(err))?
+                        value: f64::from_str(&value).map_err(|err| CustomMetricParseError::ParseFloatError(err))?,
+                        sub: if has_sub {Some(sub)} else {None}
                     }
                 )
             }
@@ -116,4 +128,20 @@ impl FromStr for CustomMetric {
             }
         }
     }
+}
+
+#[test]
+fn test_parse1() {
+    assert_eq!(
+        Ok(CustomMetric::Gauge { name: "custom.test".to_string(), value: 44.0, sub: None }),
+        CustomMetric::from_str("custom.test:44.0|g")
+    );
+}
+
+#[test]
+fn test_parse2() {
+    assert_eq!(
+        Ok(CustomMetric::Gauge { name: "custom.test".to_string(), value: 44.0, sub: Some("sub".to_owned()) }),
+        CustomMetric::from_str("custom.test:44.0|g#sub")
+    );
 }
