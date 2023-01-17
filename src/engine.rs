@@ -10,13 +10,14 @@ use crate::model::{EventResult, MetricId, MetricName, TimeInterval, TimePoint, V
 pub struct EventEngine {
     next_event_id: EventId,
     next_value_id: ValueId,
+    events: Vec<(EventId, Event)>,
 
     value_generators: FnvHashMap<ValueId, CompiledValueExpression>,
     expression_to_value_mapping: FnvHashMap<CompiledValueExpression, ValueId>,
     value_generators_for_metric: FnvHashMap<MetricId, Vec<ValueId>>,
     aggregators: AggregateOperations,
 
-    events: Vec<CompiledEvent>
+    compiled_events: Vec<CompiledEvent>
 }
 
 impl EventEngine {
@@ -24,23 +25,30 @@ impl EventEngine {
         EventEngine {
             next_event_id: EventId(1),
             next_value_id: ValueId(1),
+            events: Vec::new(),
 
             value_generators: FnvHashMap::default(),
             expression_to_value_mapping: FnvHashMap::default(),
             value_generators_for_metric: FnvHashMap::default(),
             aggregators: AggregateOperations::new(),
 
-            events: Vec::new()
+            compiled_events: Vec::new()
         }
     }
 
     pub fn add_event(&mut self, metric_definitions: &MetricDefinitions, event: Event) -> EventResult<EventId> {
         let event_id = self.next_event_id;
+        self.compile_event(metric_definitions, event_id, &event)?;
+        self.events.push((event_id, event));
+        self.next_event_id.0 += 1;
+        Ok(event_id)
+    }
 
+    fn compile_event(&mut self, metric_definitions: &MetricDefinitions, event_id: EventId, event: &Event) -> EventResult<()> {
         let mut sub_query_id = 0;
-        for dependent_metric in event.dependent_metric.into_iter() {
+        for dependent_metric in event.dependent_metric.iter() {
             for independent_metric_id in metric_definitions.expand(&event.independent_metric)? {
-                for dependent_metric_id in metric_definitions.expand(&dependent_metric)? {
+                for dependent_metric_id in metric_definitions.expand(dependent_metric)? {
                     let mut value_generators = Vec::new();
 
                     let context = CompileEventContext {
@@ -62,7 +70,7 @@ impl EventEngine {
                     )?;
                     // println!("{:#?}", outputs);
 
-                    self.events.push(
+                    self.compiled_events.push(
                         CompiledEvent {
                             id: event_id,
                             sub_id: sub_query_id as u64,
@@ -101,8 +109,7 @@ impl EventEngine {
             }
         }
 
-        self.next_event_id.0 += 1;
-        Ok(event_id)
+        Ok(())
     }
 
     fn compile_query(&mut self,
@@ -288,7 +295,7 @@ impl EventEngine {
 
         self.aggregators.handle_values(time, &values);
 
-        for event in self.events.iter() {
+        for event in self.compiled_events.iter() {
             let query = &event.query;
             // println!("Event #{}.{}: {}", event.id, event.sub_id, self.query_to_string(&values, query).unwrap_or("N/A".to_owned()));
             if let Some(accept) = self.evaluate_query(&values, query).map(|value| value.bool()).flatten() {
