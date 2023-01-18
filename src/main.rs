@@ -33,6 +33,8 @@ async fn main() {
         let mut engine = EventEngine::new();
         let mut collectors_manager = CollectorsManager::new(&mut metric_definitions).await.unwrap();
 
+        metric_definitions.print();
+
         add_events(&metric_definitions, &mut engine);
 
         let mut event_output_handlers = EventOutputHandlers::new();

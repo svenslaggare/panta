@@ -83,6 +83,15 @@ impl MetricDefinitions {
     pub fn get_specific_name(&self, id: MetricId) -> Option<&MetricName> {
         self.metric_id_to_specific_name_mapping.get(&id)
     }
+
+    pub fn print(&self) {
+        for (metric, sub_metrics) in &self.metrics {
+            println!("{}", metric);
+            for sub_metric in sub_metrics {
+                println!("\t{}", self.get_specific_name(*sub_metric).unwrap().sub.as_ref().map(|x| x.as_str()).unwrap_or(""));
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
