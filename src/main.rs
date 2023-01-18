@@ -6,25 +6,19 @@ mod engine;
 mod collectors;
 mod event_output;
 
-use std::cell::RefCell;
-use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use log::{error, trace};
 
-use tokio::sync::mpsc;
 use tokio::task;
 
-use crate::collectors::custom_metrics::{CustomMetric, CustomMetricsCollector};
-use crate::collectors::rabbitmq_metrics::RabbitMQStatsCollector;
-use crate::collectors::system_metrics::SystemMetricsCollector;
+use crate::collectors::manager::CollectorsManager;
 
 use crate::engine::EventEngine;
 use crate::event::{BoolOperator, Event, EventExpression, EventOutputName, EventQuery, ValueExpression};
 use crate::event_output::{ConsoleEventOutputHandler, EventOutputHandlers};
 use crate::metrics::{MetricDefinitions, MetricValues};
 use crate::model::{MetricName, TimeInterval, TimePoint, Value};
-
 
 #[tokio::main]
 async fn main() {
@@ -37,19 +31,7 @@ async fn main() {
 
         let mut metric_definitions = MetricDefinitions::new();
         let mut engine = EventEngine::new();
-
-        let mut system_metrics_collector = SystemMetricsCollector::new(&mut metric_definitions).unwrap();
-        let rabbitmq_metrics_collector = RabbitMQStatsCollector::new(
-            "http://localhost:15672", "guest", "guest",
-            &mut metric_definitions
-        ).await.unwrap();
-        let rabbitmq_metrics_collector = Rc::new(RefCell::new(rabbitmq_metrics_collector));
-
-        let (custom_metrics_sender, mut custom_metrics_receiver) = mpsc::unbounded_channel();
-        let custom_metrics_collector = CustomMetricsCollector::new(custom_metrics_sender).unwrap();
-        task::spawn_local(async move {
-            custom_metrics_collector.collect().await.unwrap();
-        });
+        let mut collectors_manager = CollectorsManager::new(&mut metric_definitions).await.unwrap();
 
         add_events(&metric_definitions, &mut engine);
 
@@ -61,35 +43,11 @@ async fn main() {
         loop {
             let metric_time = TimePoint::now();
 
-            let rabbitmq_metrics_collector_clone = rabbitmq_metrics_collector.clone();
-            let rabbitmq_result = task::spawn_local(async move {
-                let mut rabbitmq_values = MetricValues::new(TimeInterval::Seconds(0.0));
-                let rabbitmq_result = rabbitmq_metrics_collector_clone.borrow_mut().collect(
-                    metric_time,
-                    &mut rabbitmq_values
-                ).await;
-                rabbitmq_result.map(|_| rabbitmq_values)
-            });
-
-            system_metrics_collector.collect(metric_time, &mut values).unwrap();
-
-            match rabbitmq_result.await.unwrap() {
-                Ok(rabbitmq_values) => {
-                    values.extend(rabbitmq_values);
-                }
-                Err(err) => {
-                    error!("Failed to collect RabbitMQ metrics: {:?}", err);
-                }
-            }
-
-            while let Ok(custom_metric) = custom_metrics_receiver.try_recv() {
-                match custom_metric {
-                    CustomMetric::Gauge { name, value, sub } => {
-                        let metric_id = metric_definitions.define(MetricName::new(&name, sub.as_ref().map(|x| x.as_str())));
-                        values.insert(metric_time, metric_id, value);
-                    }
-                }
-            }
+            collectors_manager.collect(
+                &mut metric_definitions,
+                metric_time,
+                &mut values
+            ).await.unwrap();
 
             engine.handle_values(
                 &metric_definitions,
