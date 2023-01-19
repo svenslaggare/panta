@@ -5,6 +5,7 @@ mod aggregator;
 mod engine;
 mod collectors;
 mod event_output;
+mod parsing;
 
 use std::time::{Duration, Instant};
 
@@ -15,7 +16,7 @@ use tokio::task;
 use crate::collectors::manager::CollectorsManager;
 
 use crate::engine::EventEngine;
-use crate::event::{BoolOperator, Event, EventExpression, EventOutputName, EventQuery, ValueExpression};
+use crate::event::{BoolOperator, Event, EventExpression, EventOutputName, EventQuery, EventsDefinition, ValueExpression};
 use crate::event_output::{ConsoleEventOutputHandler, EventOutputHandlers};
 use crate::metrics::{MetricDefinitions, MetricValues};
 use crate::model::{MetricName, TimeInterval, TimePoint, Value};
@@ -89,6 +90,13 @@ fn setup_logger() -> Result<(), fern::InitError> {
 }
 
 fn add_events(metric_definitions: &MetricDefinitions, engine: &mut EventEngine) {
+    let content = std::fs::read_to_string("data/events.yaml").unwrap();
+    let events_def: EventsDefinition = serde_yaml::from_str(&content).unwrap();
+    for event in events_def.events {
+        engine.add_event(metric_definitions, event).unwrap();
+    }
+    return;
+
     let interval = TimeInterval::Seconds(5.0);
 
     engine.add_event(
@@ -97,8 +105,8 @@ fn add_events(metric_definitions: &MetricDefinitions, engine: &mut EventEngine) 
             independent_metric: MetricName::sub("system.cpu_usage", "all"),
             dependent_metric: vec![
                 MetricName::all("system.used_memory"),
-                MetricName::all("system.disk_read_bytes"),
-                MetricName::all("system.disk_write_bytes"),
+                MetricName::sub("system.disk_read_bytes", "sda2"),
+                MetricName::sub("system.disk_write_bytes", "sda2"),
                 MetricName::all("rabbitmq.publish_rate")
             ],
             query: EventQuery::And {

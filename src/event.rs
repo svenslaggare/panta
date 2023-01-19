@@ -1,6 +1,10 @@
 use std::fmt::{Display, Formatter};
 
+use serde::{Serialize, Deserialize, Deserializer};
+use serde::de::{Error, Visitor};
+
 use crate::model::{MetricName, TimeInterval, Value};
+use crate::parsing::{parse_event_expression, parse_event_query};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EventId(pub u64);
@@ -11,7 +15,12 @@ impl Display for EventId {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
+pub struct EventsDefinition {
+    pub events: Vec<Event>
+}
+
+#[derive(Debug, Deserialize)]
 pub struct Event {
     pub independent_metric: MetricName,
     pub dependent_metric: Vec<MetricName>,
@@ -19,7 +28,7 @@ pub struct Event {
     pub outputs: Vec<(EventOutputName, EventExpression)>
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum EventQuery {
     Expression(EventExpression),
     Bool { operator: BoolOperator, left: Box<EventQuery>, right: Box<EventQuery> },
@@ -27,7 +36,38 @@ pub enum EventQuery {
     Or { left: Box<EventQuery>, right: Box<EventQuery> }
 }
 
-#[derive(Debug)]
+struct EventQueryVisitor;
+impl<'de> Visitor<'de> for EventQueryVisitor {
+    type Value = EventQuery;
+
+    fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
+        formatter.write_str("expected event query")
+    }
+
+    fn visit_string<E>(self, value: String) -> Result<Self::Value, E> where E: Error {
+        self.visit_str(&value)
+    }
+
+    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E> where E: Error {
+        parse_event_query(value)
+            .map_err(|err| E::custom(
+                format!(
+                    "Failed to parse event query ({}:{}): {}",
+                    err.location().line + 1,
+                    err.location().column + 1,
+                    err.to_string()
+                )
+            ))
+    }
+}
+
+impl<'de> Deserialize<'de> for EventQuery {
+    fn deserialize<D>(deserializer: D) -> Result<EventQuery, D::Error> where D: Deserializer<'de> {
+        deserializer.deserialize_string(EventQueryVisitor)
+    }
+}
+
+#[derive(Debug, PartialEq)]
 pub enum EventExpression {
     Value(ValueExpression),
     Average { value: ValueExpression, interval: TimeInterval },
@@ -38,7 +78,38 @@ pub enum EventExpression {
     Function { function: Function, arguments: Vec<EventExpression> }
 }
 
-#[derive(Debug)]
+struct EventExpressionVisitor;
+impl<'de> Visitor<'de> for EventExpressionVisitor {
+    type Value = EventExpression;
+
+    fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
+        formatter.write_str("expected event expression")
+    }
+
+    fn visit_string<E>(self, value: String) -> Result<Self::Value, E> where E: Error {
+        self.visit_str(&value)
+    }
+
+    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E> where E: Error {
+        parse_event_expression(value)
+            .map_err(|err| E::custom(
+                format!(
+                    "Failed to parse event expression ({}:{}): {}",
+                    err.location().line + 1,
+                    err.location().column + 1,
+                    err.to_string()
+                )
+            ))
+    }
+}
+
+impl<'de> Deserialize<'de> for EventExpression {
+    fn deserialize<D>(deserializer: D) -> Result<EventExpression, D::Error> where D: Deserializer<'de> {
+        deserializer.deserialize_string(EventExpressionVisitor)
+    }
+}
+
+#[derive(Debug, PartialEq, Deserialize)]
 pub enum ValueExpression {
     IndependentMetric,
     DependentMetric,
@@ -47,14 +118,14 @@ pub enum ValueExpression {
     Function { function: Function, arguments: Vec<ValueExpression> }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum EventOutputName {
     String(String),
     IndependentMetricName,
     DependentMetricName
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 pub enum BoolOperator {
     Equal,
     NotEqual,
@@ -102,7 +173,7 @@ impl Display for BoolOperator {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize,)]
 pub enum ArithmeticOperator {
     Add,
     Subtract,
@@ -132,7 +203,7 @@ impl Display for ArithmeticOperator {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
 pub enum Function {
     Abs,
     Sqrt,

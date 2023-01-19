@@ -20,7 +20,7 @@ pub struct CollectorsManager {
 
 impl CollectorsManager {
     pub async fn new(metric_definitions: &mut MetricDefinitions) -> EventResult<CollectorsManager> {
-        let mut system_metrics_collector = SystemMetricsCollector::new(metric_definitions)?;
+        let system_metrics_collector = SystemMetricsCollector::new(metric_definitions)?;
         let rabbitmq_metrics_collector = RabbitMQStatsCollector::new(
             "http://localhost:15672", "guest", "guest",
             metric_definitions

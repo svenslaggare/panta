@@ -1,6 +1,9 @@
 use std::fmt::{Display};
 use std::time::{Duration, Instant};
 
+use serde::de::{Error, Visitor};
+use serde::{Serialize, Deserialize, Deserializer};
+
 pub type TimePoint = Instant;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -9,7 +12,7 @@ pub struct ValueId(pub u64);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct MetricId(pub u64);
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub struct MetricName {
     pub name: String,
     pub sub: Option<String>
@@ -59,7 +62,37 @@ impl Display for MetricName {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+struct MetricNameVisitor;
+impl<'de> Visitor<'de> for MetricNameVisitor {
+    type Value = MetricName;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("string on the format key:value")
+    }
+
+    fn visit_string<E>(self, value: String) -> Result<Self::Value, E> where E: Error {
+        self.visit_str(&value)
+    }
+
+    fn visit_str<E>(self, value: &str) -> Result<Self::Value, E> where E: Error {
+        let parts = value.split(":").collect::<Vec<_>>();
+        if parts.len() == 2 {
+            Ok(MetricName::sub(parts[0], parts[1]))
+        } else if parts.len() == 1 {
+            Ok(MetricName::all(parts[0]))
+        } else {
+            Err(E::custom("string on the format key:value"))
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for MetricName {
+    fn deserialize<D>(deserializer: D) -> Result<MetricName, D::Error> where D: Deserializer<'de> {
+        deserializer.deserialize_string(MetricNameVisitor)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
 pub enum TimeInterval {
     Seconds(f64),
     Minutes(f64)
@@ -116,3 +149,10 @@ pub enum EventError {
 }
 
 pub type EventResult<T> = Result<T, EventError>;
+
+#[test]
+fn test_deserialize_metric_name1() {
+    assert_eq!(Some(MetricName::all("haha")), serde_json::from_str::<MetricName>("\"haha\"").ok());
+    assert_eq!(Some(MetricName::sub("haha", "hoho")), serde_json::from_str::<MetricName>("\"haha:hoho\"").ok());
+    assert_eq!(None, serde_json::from_str::<MetricName>("\"haha:hoho:hihi\"").ok());
+}

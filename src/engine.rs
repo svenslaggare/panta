@@ -636,7 +636,7 @@ fn test_event_engine1() {
             ]
         }
     ).unwrap();
-    engine.recompile_events(&metric_definitions);
+    engine.recompile_events(&metric_definitions).unwrap();
 
     println!();
 

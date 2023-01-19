@@ -1,0 +1,15 @@
+events:
+  - independent_metric: "system.cpu_usage:all"
+    dependent_metric:
+      - "system.used_memory"
+      - "system.disk_read_bytes:sda2"
+      - "system.disk_write_bytes:sda2"
+      - "rabbitmq.publish_rate"
+    query: "corr(ind, dep, 5s) > 0.5 && avg(ind, 5s) > 0.1 && avg(dep, 5s) > 0.0"
+    outputs:
+      - - IndependentMetricName
+        - "avg(ind, 5s)"
+      - - DependentMetricName
+        - "avg(dep, 5s)"
+      - - !String "corr"
+        - "corr(ind, dep, 5s)"
