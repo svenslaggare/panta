@@ -1,7 +1,12 @@
+use std::fs::File;
+use std::io::Write;
+use std::path::Path;
+use fnv::FnvHashMap;
 use log::info;
+use serde::Serialize;
 
 use crate::event::EventId;
-use crate::model::{EventResult, Value};
+use crate::model::{EventError, EventResult, Value};
 
 pub trait EventOutputHandler {
     fn handle_output(
@@ -77,4 +82,51 @@ pub fn join_event_output(outputs: &Vec<(String, Value)>) -> String {
     }
 
     output_string
+}
+
+pub struct JsonFileEventOutputHandler {
+    file: File
+}
+
+impl JsonFileEventOutputHandler {
+    pub fn new(path: &Path) -> EventResult<JsonFileEventOutputHandler> {
+        let file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .open(path)
+            .map_err(|err| EventError::FailedToCreateFile(err))?;
+
+        Ok(
+            JsonFileEventOutputHandler {
+                file
+            }
+        )
+    }
+}
+
+impl EventOutputHandler for JsonFileEventOutputHandler {
+    fn handle_output(&mut self, event_id: &EventId, name: &str, outputs: &Vec<(String, Value)>) -> EventResult<()> {
+        let entry = JsonFileEntry {
+            time: chrono::Local::now().timestamp_micros() as f64 / 1.0E6,
+            name: name.to_owned(),
+            id: event_id.0,
+            values: FnvHashMap::from_iter(outputs.iter().map(|(name, value)| (name.to_owned(), value.convert_float())))
+        };
+
+        let mut entry_json = serde_json::to_string(&entry).unwrap();
+        entry_json.push('\n');
+        let mut entry_json = entry_json.into_bytes();
+
+        self.file.write_all(&mut entry_json).map_err(|err| EventError::FailedToWriteFile(err))?;
+        self.file.flush().map_err(|err| EventError::FailedToWriteFile(err))?;
+        Ok(())
+    }
+}
+
+#[derive(Serialize)]
+struct JsonFileEntry {
+    time: f64,
+    name: String,
+    id: u64,
+    values: FnvHashMap<String, f64>
 }

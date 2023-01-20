@@ -129,6 +129,13 @@ impl Value {
             None
         }
     }
+
+    pub fn convert_float(&self) -> f64 {
+        match self {
+            Value::Float(value) => *value,
+            Value::Bool(value) => if *value {1.0} else {0.0}
+        }
+    }
 }
 
 impl Display for Value {
@@ -146,7 +153,9 @@ pub enum EventError {
     FailedToCollectRabbitMQMetric(reqwest::Error),
     FailedToCompileMetric,
     MetricNotFound(MetricName),
-    FailedToLoad(String)
+    FailedToLoad(String),
+    FailedToCreateFile(std::io::Error),
+    FailedToWriteFile(std::io::Error)
 }
 
 pub type EventResult<T> = Result<T, EventError>;

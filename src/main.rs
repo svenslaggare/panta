@@ -18,7 +18,7 @@ use crate::collectors::manager::CollectorsManager;
 
 use crate::engine::EventEngine;
 use crate::event::{BoolOperator, Event, EventExpression, EventOutputName, EventQuery, EventsDefinition, ValueExpression};
-use crate::event_output::{ConsoleEventOutputHandler, EventOutputHandlers};
+use crate::event_output::{ConsoleEventOutputHandler, EventOutputHandlers, JsonFileEventOutputHandler};
 use crate::metrics::{MetricDefinitions, MetricValues};
 use crate::model::{MetricName, TimeInterval, TimePoint, Value};
 
@@ -44,6 +44,7 @@ async fn main() {
 
         let mut event_output_handlers = EventOutputHandlers::new();
         event_output_handlers.add_handler(Box::new(ConsoleEventOutputHandler::new()));
+        event_output_handlers.add_handler(Box::new(JsonFileEventOutputHandler::new(Path::new("output.ndjson")).unwrap()));
 
         let mut values = MetricValues::new(TimeInterval::Minutes(0.5));
 
