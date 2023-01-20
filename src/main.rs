@@ -56,12 +56,13 @@ async fn main() {
                 &mut values
             ).await.unwrap();
 
+            let computation_start = Instant::now();
             engine.handle_values(
                 &metric_definitions,
                 metric_time,
                 &values,
-                |event_id, values: Vec<(String, Value)>| {
-                    if let Err(err) = event_output_handlers.handle_output(&event_id, &values) {
+                |event_id, name, outputs: Vec<(String, Value)>| {
+                    if let Err(err) = event_output_handlers.handle_output(&event_id, name, &outputs) {
                         error!("Failed generating output due to: {:?}", err);
                     }
                 }
@@ -70,7 +71,8 @@ async fn main() {
             values.clear_old(metric_time);
 
             let elapsed = (Instant::now() - metric_time).as_secs_f64();
-            trace!("Elapsed time: {:.3} ms, metrics: {}", elapsed * 1000.0, values.len());
+            let elapsed_computation = (Instant::now() - computation_start).as_secs_f64();
+            trace!("Elapsed time: {:.3} ms (computation: {:.3} ms), metrics: {}", elapsed * 1000.0, elapsed_computation * 1000.0, values.len());
             tokio::time::sleep(Duration::from_secs_f64((1.0 / sampling_rate - elapsed).max(0.0))).await;
         }
     }).await;
@@ -87,7 +89,7 @@ fn setup_logger() -> Result<(), fern::InitError> {
                 message
             ))
         })
-        .level(log::LevelFilter::Debug)
+        .level(log::LevelFilter::Info)
         .chain(std::io::stdout())
         .apply()?;
     Ok(())
@@ -99,6 +101,7 @@ fn add_events(metric_definitions: &MetricDefinitions, engine: &mut EventEngine) 
     engine.add_event(
         metric_definitions,
         Event {
+            name: "cpu_usage".to_owned(),
             independent_metric: MetricName::sub("system.cpu_usage", "all"),
             dependent_metric: vec![
                 MetricName::all("system.used_memory"),

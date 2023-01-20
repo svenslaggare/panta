@@ -4,9 +4,12 @@ use crate::event::EventId;
 use crate::model::{EventResult, Value};
 
 pub trait EventOutputHandler {
-    fn handle_output(&mut self,
-                     event_id: &EventId,
-                     outputs: &Vec<(String, Value)>) -> EventResult<()>;
+    fn handle_output(
+        &mut self,
+        event_id: &EventId,
+        name: &str,
+        outputs: &Vec<(String, Value)>
+    ) -> EventResult<()>;
 }
 
 pub type BoxEventOutputHandler = Box<dyn EventOutputHandler>;
@@ -28,9 +31,10 @@ impl EventOutputHandlers {
 
     pub fn handle_output(&mut self,
                          event_id: &EventId,
-                         values: &Vec<(String, Value)>) -> EventResult<()> {
+                         name: &str,
+                         outputs: &Vec<(String, Value)>) -> EventResult<()> {
         for handler in &mut self.handlers {
-            handler.handle_output(event_id, values)?;
+            handler.handle_output(event_id, name, outputs)?;
         }
 
         Ok(())
@@ -50,9 +54,9 @@ impl ConsoleEventOutputHandler {
 }
 
 impl EventOutputHandler for ConsoleEventOutputHandler {
-    fn handle_output(&mut self, event_id: &EventId, outputs: &Vec<(String, Value)>) -> EventResult<()> {
+    fn handle_output(&mut self, event_id: &EventId, name: &str, outputs: &Vec<(String, Value)>) -> EventResult<()> {
         let output_string = join_event_output(outputs);
-        info!("Event generated for #{}, {}", event_id, output_string);
+        info!("Event generated for {} (id: {}), {}", name, event_id, output_string);
         Ok(())
     }
 }

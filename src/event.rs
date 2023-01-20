@@ -31,6 +31,7 @@ impl EventsDefinition {
 
 #[derive(Debug, Deserialize)]
 pub struct Event {
+    pub name: String,
     pub independent_metric: MetricName,
     pub dependent_metric: Vec<MetricName>,
     pub query: EventQuery,

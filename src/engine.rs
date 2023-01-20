@@ -89,6 +89,7 @@ impl EventEngine {
                     CompiledEvent {
                         id: event_id,
                         sub_id: sub_query_id as u64,
+                        name: event.name.clone(),
                         independent_metric: independent_metric_id,
                         dependent_metric: dependent_metric_id,
                         query,
@@ -306,11 +307,11 @@ impl EventEngine {
         value_id
     }
 
-    pub fn handle_values<F: FnMut(EventId, Vec<(String, Value)>)>(&mut self,
-                                                                  metric_definitions: &MetricDefinitions,
-                                                                  time: TimePoint,
-                                                                  metrics: &MetricValues,
-                                                                  mut on_event: F) {
+    pub fn handle_values<F: FnMut(EventId, &str, Vec<(String, Value)>)>(&mut self,
+                                                                        metric_definitions: &MetricDefinitions,
+                                                                        time: TimePoint,
+                                                                        metrics: &MetricValues,
+                                                                        mut on_event: F) {
         let mut values_to_compute = FnvHashSet::default();
         for metric in metrics.keys() {
             if let Some(generators) = self.value_generators_for_metric.get(&metric) {
@@ -335,6 +336,7 @@ impl EventEngine {
                 if accept {
                     on_event(
                         event.id,
+                        &event.name,
                         self.evaluate_outputs(metric_definitions, &event, &values).collect()
                     );
                 }
@@ -480,6 +482,7 @@ type Values = FnvHashMap<ValueId, f64>;
 struct CompiledEvent {
     id: EventId,
     sub_id: u64,
+    name: String,
     independent_metric: MetricId,
     dependent_metric: MetricId,
     query: CompiledEventQuery,
@@ -631,6 +634,7 @@ fn test_event_engine1() {
     engine.add_event(
         &metric_definitions,
         Event {
+            name: "test".to_owned(),
             independent_metric: MetricName::all("x"),
             dependent_metric: vec![MetricName::all("y")],
             query: EventQuery::And {
@@ -693,9 +697,9 @@ fn test_event_engine1() {
     println!();
 
     let events = Rc::new(RefCell::new(Vec::new()));
-    let on_event = |event_id, outputs: Vec<(String, Value)>| {
+    let on_event = |event_id, name: &str, outputs: Vec<(String, Value)>| {
         events.borrow_mut().push(outputs.clone());
-        print_output_for_test(event_id, &outputs);
+        print_output_for_test(event_id, name, &outputs);
     };
 
     let mut values = MetricValues::new(TimeInterval::Minutes(1.0));
@@ -752,6 +756,7 @@ fn test_event_engine2() {
     engine.add_event(
         &metric_definitions,
         Event {
+            name: "test".to_owned(),
             independent_metric: MetricName::all("x"),
             dependent_metric: vec![MetricName::all("y")],
             query: EventQuery::And {
@@ -813,9 +818,9 @@ fn test_event_engine2() {
     println!();
 
     let events = Rc::new(RefCell::new(Vec::new()));
-    let on_event = |event_id, outputs: Vec<(String, Value)>| {
+    let on_event = |event_id, name: &str, outputs: Vec<(String, Value)>| {
         events.borrow_mut().push(outputs.clone());
-        print_output_for_test(event_id, &outputs);
+        print_output_for_test(event_id, name, &outputs);
     };
 
     let mut values = MetricValues::new(TimeInterval::Minutes(1.0));
@@ -856,7 +861,7 @@ fn test_event_engine2() {
 }
 
 #[cfg(test)]
-fn print_output_for_test(event_id: EventId, outputs: &Vec<(String, Value)>) {
+fn print_output_for_test(event_id: EventId, name: &str, outputs: &Vec<(String, Value)>) {
     let output_string = join_event_output(outputs);
-    println!("Event generated for #{}, {}", event_id, output_string);
+    println!("Event generated for {} (#{}), {}", event_id, name, output_string);
 }
