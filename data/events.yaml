@@ -1,3 +1,4 @@
+sampling_rate: 5.0
 events:
   - independent_metric: "system.cpu_usage:all"
     dependent_metric:

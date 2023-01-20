@@ -145,7 +145,8 @@ pub enum EventError {
     FailedToCollectSystemMetric(std::io::Error),
     FailedToCollectRabbitMQMetric(reqwest::Error),
     FailedToCompileMetric,
-    MetricNotFound(MetricName)
+    MetricNotFound(MetricName),
+    FailedToLoad(String)
 }
 
 pub type EventResult<T> = Result<T, EventError>;

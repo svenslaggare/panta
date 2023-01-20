@@ -1,9 +1,10 @@
 use std::fmt::{Display, Formatter};
+use std::path::Path;
 
 use serde::{Serialize, Deserialize, Deserializer};
 use serde::de::{Error, Visitor};
 
-use crate::model::{MetricName, TimeInterval, Value};
+use crate::model::{EventError, EventResult, MetricName, TimeInterval, Value};
 use crate::parsing::{parse_event_expression, parse_event_query};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -17,7 +18,15 @@ impl Display for EventId {
 
 #[derive(Debug, Deserialize)]
 pub struct EventsDefinition {
+    pub sampling_rate: f64,
     pub events: Vec<Event>
+}
+
+impl EventsDefinition {
+    pub fn load_from_file(path: &Path) -> EventResult<EventsDefinition> {
+        let content = std::fs::read_to_string(path).map_err(|err| EventError::FailedToLoad(err.to_string()))?;
+        serde_yaml::from_str(&content).map_err(|err| EventError::FailedToLoad(err.to_string()))
+    }
 }
 
 #[derive(Debug, Deserialize)]

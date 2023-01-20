@@ -7,6 +7,7 @@ mod collectors;
 mod event_output;
 mod parsing;
 
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 use log::{error, trace};
@@ -26,17 +27,20 @@ async fn main() {
     setup_logger().unwrap();
 
     let local = task::LocalSet::new();
+    let events_def = EventsDefinition::load_from_file(Path::new("data/events.yaml")).unwrap();
+    let sampling_rate = events_def.sampling_rate;
 
     local.run_until(async move {
-        let sampling_rate = 5.0;
-
         let mut metric_definitions = MetricDefinitions::new();
         let mut engine = EventEngine::new();
         let mut collectors_manager = CollectorsManager::new(&mut metric_definitions).await.unwrap();
 
         metric_definitions.print();
 
-        add_events(&metric_definitions, &mut engine);
+        // add_events(&metric_definitions, &mut engine);
+        for event in events_def.events {
+            engine.add_event(&metric_definitions, event).unwrap();
+        }
 
         let mut event_output_handlers = EventOutputHandlers::new();
         event_output_handlers.add_handler(Box::new(ConsoleEventOutputHandler::new()));
@@ -90,13 +94,6 @@ fn setup_logger() -> Result<(), fern::InitError> {
 }
 
 fn add_events(metric_definitions: &MetricDefinitions, engine: &mut EventEngine) {
-    let content = std::fs::read_to_string("data/events.yaml").unwrap();
-    let events_def: EventsDefinition = serde_yaml::from_str(&content).unwrap();
-    for event in events_def.events {
-        engine.add_event(metric_definitions, event).unwrap();
-    }
-    return;
-
     let interval = TimeInterval::Seconds(5.0);
 
     engine.add_event(
