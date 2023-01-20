@@ -2,7 +2,7 @@ use float_ord::FloatOrd;
 use fnv::{FnvHashMap, FnvHashSet};
 
 use crate::aggregator::{AggregateOperations, AverageAggregate, CorrelationAggregate, CovarianceAggregate, VarianceAggregate};
-use crate::event::{ArithmeticOperator, BoolOperator, Event, EventExpression, EventId, EventOutputName, EventQuery, Function, ValueExpression};
+use crate::event::{BinaryArithmeticOperator, BoolOperator, Event, EventExpression, EventId, EventOutputName, EventQuery, Function, UnaryArithmeticOperator, ValueExpression};
 use crate::event_output::join_event_output;
 use crate::metrics::{MetricDefinitions, MetricValues};
 
@@ -138,7 +138,7 @@ impl EventEngine {
                     )
                 )
             }
-            EventQuery::Bool { operator, left, right, } => {
+            EventQuery::Bool { operator, left, right } => {
                 let left = self.compile_query(context, value_generators, left)?;
                 let right = self.compile_query(context, value_generators, right)?;
 
@@ -147,6 +147,15 @@ impl EventEngine {
                         left: Box::new(left),
                         right: Box::new(right),
                         operator: *operator
+                    }
+                )
+            }
+            EventQuery::Invert { operand } => {
+                let operand = self.compile_query(context, value_generators, operand)?;
+
+                Ok(
+                    CompiledEventQuery::Invert {
+                        operand: Box::new(operand)
                     }
                 )
             }
@@ -232,15 +241,25 @@ impl EventEngine {
                 let aggregate = self.aggregators.add_correlation(left_value_id, right_value_id, *interval);
                 Ok(CompiledEventExpression::Correlation(aggregate))
             }
-            EventExpression::Arithmetic { operator, left, right } => {
+            EventExpression::BinaryArithmetic { operator, left, right } => {
                 let left = self.compile_expression(context, value_generators, left)?;
                 let right = self.compile_expression(context, value_generators, right)?;
 
                 Ok(
-                    CompiledEventExpression::Arithmetic {
+                    CompiledEventExpression::BinaryArithmetic {
                         left: Box::new(left),
                         right: Box::new(right),
                         operator: *operator
+                    }
+                )
+            }
+            EventExpression::UnaryArithmetic { operator, operand } => {
+                let operand = self.compile_expression(context, value_generators, operand)?;
+
+                Ok(
+                    CompiledEventExpression::UnaryArithmetic {
+                        operator: *operator,
+                        operand: Box::new(operand)
                     }
                 )
             }
@@ -337,6 +356,10 @@ impl EventEngine {
                 let right = self.evaluate_query(values, right)?;
                 Some(Value::Bool(operator.evaluate(&left, &right)?))
             }
+            CompiledEventQuery::Invert { operand } => {
+                let operand = self.evaluate_query(values, operand)?;
+                Some(Value::Bool(!operand.bool()?))
+            }
             CompiledEventQuery::And { left, right } => {
                 Some(Value::Bool(self.evaluate_query(values, left)?.bool()? && self.evaluate_query(values, right)?.bool()?))
             }
@@ -354,7 +377,7 @@ impl EventEngine {
             .iter()
             .map(|(name, expression)| {
                 let name = match name {
-                    EventOutputName::String(str) => str.clone(),
+                    EventOutputName::Text(str) => str.clone(),
                     EventOutputName::IndependentMetricName => metric_definitions.get_specific_name(event.independent_metric).unwrap().to_string(),
                     EventOutputName::DependentMetricName => metric_definitions.get_specific_name(event.dependent_metric).unwrap().to_string(),
                 };
@@ -373,10 +396,14 @@ impl EventEngine {
             CompiledEventExpression::Variance(aggregate) => Some(Value::Float(self.aggregators.variance(aggregate)?)),
             CompiledEventExpression::Covariance(aggregate) => Some(Value::Float(self.aggregators.covariance(aggregate)?)),
             CompiledEventExpression::Correlation(aggregate) => Some(Value::Float(self.aggregators.correlation(aggregate)?)),
-            CompiledEventExpression::Arithmetic { operator, left, right } => {
+            CompiledEventExpression::BinaryArithmetic { operator, left, right } => {
                 let left = self.evaluate_expression(values, left)?.float()?;
                 let right = self.evaluate_expression(values, right)?.float()?;
                 Some(Value::Float(operator.evaluate(left, right)))
+            }
+            CompiledEventExpression::UnaryArithmetic { operator, operand } => {
+                let operand = self.evaluate_expression(values, operand)?.float()?;
+                Some(Value::Float(operator.evaluate(operand)))
             }
             CompiledEventExpression::Function { function, arguments } => {
                 let mut evaluated_arguments = Vec::new();
@@ -401,6 +428,10 @@ impl EventEngine {
                 let right = self.query_to_string(values, right)?;
                 Some(format!("{} {} {}", left, operator, right))
             }
+            CompiledEventQuery::Invert { operand } => {
+                let operand = self.query_to_string(values, operand)?;
+                Some(format!("!{}", operand))
+            }
             CompiledEventQuery::And { left, right } => {
                 let left = self.query_to_string(values, left)?;
                 let right = self.query_to_string(values, right)?;
@@ -423,10 +454,14 @@ impl EventEngine {
             CompiledEventExpression::Variance(aggregate) => Some(format!("Var({})", self.aggregators.variance(aggregate)?)),
             CompiledEventExpression::Covariance(aggregate) => Some(format!("Cov({})", self.aggregators.covariance(aggregate)?)),
             CompiledEventExpression::Correlation(aggregate) => Some(format!("Corr({})", self.aggregators.correlation(aggregate)?)),
-            CompiledEventExpression::Arithmetic { left, right, operator: operation } => {
+            CompiledEventExpression::BinaryArithmetic { operator, left, right } => {
                 let left = self.expression_to_string(values, left)?;
                 let right = self.expression_to_string(values, right)?;
-                Some(format!("{} {} {}", left, operation, right))
+                Some(format!("{} {} {}", left, operator, right))
+            }
+            CompiledEventExpression::UnaryArithmetic { operator, operand } => {
+                let operand = self.expression_to_string(values, operand)?;
+                Some(format!("{}{}", operator, operand))
             }
             CompiledEventExpression::Function { function, arguments } => {
                 let mut transformed_arguments = Vec::new();
@@ -455,6 +490,7 @@ struct CompiledEvent {
 enum CompiledEventQuery {
     Expression(CompiledEventExpression),
     Bool { left: Box<CompiledEventQuery>, right: Box<CompiledEventQuery>, operator: BoolOperator },
+    Invert { operand: Box<CompiledEventQuery> },
     And { left: Box<CompiledEventQuery>, right: Box<CompiledEventQuery> },
     Or { left: Box<CompiledEventQuery>, right: Box<CompiledEventQuery> }
 }
@@ -471,7 +507,8 @@ enum CompiledEventExpression {
     Variance(VarianceAggregate),
     Covariance(CovarianceAggregate),
     Correlation(CorrelationAggregate),
-    Arithmetic { operator: ArithmeticOperator, left: Box<CompiledEventExpression>, right: Box<CompiledEventExpression> },
+    BinaryArithmetic { operator: BinaryArithmeticOperator, left: Box<CompiledEventExpression>, right: Box<CompiledEventExpression> },
+    UnaryArithmetic { operator: UnaryArithmeticOperator, operand: Box<CompiledEventExpression> },
     Function { function: Function, arguments: Vec<CompiledEventExpression> }
 }
 
@@ -479,7 +516,8 @@ enum CompiledEventExpression {
 enum CompiledValueExpression {
     Metric(MetricId),
     Constant(FloatOrd<f64>),
-    Arithmetic { operator: ArithmeticOperator, left: Box<CompiledValueExpression>, right: Box<CompiledValueExpression> },
+    BinaryArithmetic { operator: BinaryArithmeticOperator, left: Box<CompiledValueExpression>, right: Box<CompiledValueExpression> },
+    UnaryArithmetic { operator: UnaryArithmeticOperator, operand: Box<CompiledValueExpression> },
     Function { function: Function, arguments: Vec<CompiledValueExpression> }
 }
 
@@ -497,15 +535,25 @@ impl CompiledValueExpression {
             ValueExpression::Constant(value) => {
                 Ok(CompiledValueExpression::Constant(FloatOrd(*value)))
             }
-            ValueExpression::Arithmetic { operator, left, right } => {
+            ValueExpression::BinaryArithmetic { operator, left, right } => {
                 let left = CompiledValueExpression::compile(left, context)?;
                 let right = CompiledValueExpression::compile(right, context)?;
 
                 Ok(
-                    CompiledValueExpression::Arithmetic {
+                    CompiledValueExpression::BinaryArithmetic {
+                        operator: operator.clone(),
                         left: Box::new(left),
                         right: Box::new(right),
-                        operator: operator.clone()
+                    }
+                )
+            }
+            ValueExpression::UnaryArithmetic { operator, operand } => {
+                let operand = CompiledValueExpression::compile(operand, context)?;
+
+                Ok(
+                    CompiledValueExpression::UnaryArithmetic {
+                        operator: operator.clone(),
+                        operand: Box::new(operand)
                     }
                 )
             }
@@ -529,10 +577,14 @@ impl CompiledValueExpression {
         match self {
             CompiledValueExpression::Metric(metric) => metrics.get(metric).cloned(),
             CompiledValueExpression::Constant(value) => Some(value.0),
-            CompiledValueExpression::Arithmetic { left, right, operator: operation } => {
+            CompiledValueExpression::BinaryArithmetic { left, right, operator } => {
                 let left = left.evaluate(metrics)?;
                 let right = right.evaluate(metrics)?;
-                Some(operation.evaluate(left, right))
+                Some(operator.evaluate(left, right))
+            }
+            CompiledValueExpression::UnaryArithmetic { operator, operand } => {
+                let operand = operand.evaluate(metrics)?;
+                Some(operator.evaluate(operand))
             }
             CompiledValueExpression::Function { function, arguments } => {
                 let mut evaluated_arguments = Vec::new();
@@ -626,7 +678,7 @@ fn test_event_engine1() {
                     EventExpression::Average { value: ValueExpression::DependentMetric, interval: TimeInterval::Seconds(10.0) }
                 ),
                 (
-                    EventOutputName::String("cov".to_owned()),
+                    EventOutputName::Text("cov".to_owned()),
                     EventExpression::Covariance {
                         left: ValueExpression::IndependentMetric,
                         right: ValueExpression::DependentMetric,
@@ -747,7 +799,7 @@ fn test_event_engine2() {
                     EventExpression::Average { value: ValueExpression::DependentMetric, interval: TimeInterval::Seconds(10.0) }
                 ),
                 (
-                    EventOutputName::String("cov".to_owned()),
+                    EventOutputName::Text("cov".to_owned()),
                     EventExpression::Covariance {
                         left: ValueExpression::IndependentMetric,
                         right: ValueExpression::DependentMetric,

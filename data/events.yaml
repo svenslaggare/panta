@@ -12,5 +12,5 @@ events:
         - "avg(ind, 5s)"
       - - DependentMetricName
         - "avg(dep, 5s)"
-      - - !String "corr"
+      - - !Text "corr"
         - "corr(ind, dep, 5s)"

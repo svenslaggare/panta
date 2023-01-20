@@ -171,7 +171,7 @@ fn add_events(metric_definitions: &MetricDefinitions, engine: &mut EventEngine) 
                     EventExpression::Average { value: ValueExpression::DependentMetric, interval }
                 ),
                 (
-                    EventOutputName::String("corr".to_owned()),
+                    EventOutputName::Text("corr".to_owned()),
                     EventExpression::Correlation {
                         left: ValueExpression::IndependentMetric,
                         right: ValueExpression::DependentMetric,

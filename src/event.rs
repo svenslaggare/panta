@@ -41,6 +41,7 @@ pub struct Event {
 pub enum EventQuery {
     Expression(EventExpression),
     Bool { operator: BoolOperator, left: Box<EventQuery>, right: Box<EventQuery> },
+    Invert { operand: Box<EventQuery> },
     And { left: Box<EventQuery>, right: Box<EventQuery> },
     Or { left: Box<EventQuery>, right: Box<EventQuery> }
 }
@@ -83,7 +84,8 @@ pub enum EventExpression {
     Variance { value: ValueExpression, interval: TimeInterval },
     Covariance { left: ValueExpression, right: ValueExpression, interval: TimeInterval },
     Correlation { left: ValueExpression, right: ValueExpression, interval: TimeInterval },
-    Arithmetic { operator: ArithmeticOperator, left: Box<EventExpression>, right: Box<EventExpression> },
+    BinaryArithmetic { operator: BinaryArithmeticOperator, left: Box<EventExpression>, right: Box<EventExpression> },
+    UnaryArithmetic { operator: UnaryArithmeticOperator, operand: Box<EventExpression> },
     Function { function: Function, arguments: Vec<EventExpression> }
 }
 
@@ -123,13 +125,14 @@ pub enum ValueExpression {
     IndependentMetric,
     DependentMetric,
     Constant(f64),
-    Arithmetic { operator: ArithmeticOperator, left: Box<ValueExpression>, right: Box<ValueExpression> },
+    BinaryArithmetic { operator: BinaryArithmeticOperator, left: Box<ValueExpression>, right: Box<ValueExpression> },
+    UnaryArithmetic { operator: UnaryArithmeticOperator, operand: Box<ValueExpression> },
     Function { function: Function, arguments: Vec<ValueExpression> }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum EventOutputName {
-    String(String),
+    Text(String),
     IndependentMetricName,
     DependentMetricName
 }
@@ -183,31 +186,52 @@ impl Display for BoolOperator {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize,)]
-pub enum ArithmeticOperator {
+pub enum BinaryArithmeticOperator {
     Add,
     Subtract,
     Multiply,
     Divide
 }
 
-impl ArithmeticOperator {
+impl BinaryArithmeticOperator {
     pub fn evaluate(&self, left: f64, right: f64) -> f64 {
         match self {
-            ArithmeticOperator::Add => left + right,
-            ArithmeticOperator::Subtract => left - right,
-            ArithmeticOperator::Multiply => left * right,
-            ArithmeticOperator::Divide => left / right
+            BinaryArithmeticOperator::Add => left + right,
+            BinaryArithmeticOperator::Subtract => left - right,
+            BinaryArithmeticOperator::Multiply => left * right,
+            BinaryArithmeticOperator::Divide => left / right
         }
     }
 }
 
-impl Display for ArithmeticOperator {
+impl Display for BinaryArithmeticOperator {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            ArithmeticOperator::Add => write!(f, "+"),
-            ArithmeticOperator::Subtract => write!(f, "-"),
-            ArithmeticOperator::Multiply => write!(f, "*"),
-            ArithmeticOperator::Divide => write!(f, "/"),
+            BinaryArithmeticOperator::Add => write!(f, "+"),
+            BinaryArithmeticOperator::Subtract => write!(f, "-"),
+            BinaryArithmeticOperator::Multiply => write!(f, "*"),
+            BinaryArithmeticOperator::Divide => write!(f, "/"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize,)]
+pub enum UnaryArithmeticOperator {
+    Negate
+}
+
+impl UnaryArithmeticOperator {
+    pub fn evaluate(&self, operand: f64) -> f64 {
+        match self {
+            UnaryArithmeticOperator::Negate => -operand
+        }
+    }
+}
+
+impl Display for UnaryArithmeticOperator {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            UnaryArithmeticOperator::Negate => write!(f, "-")
         }
     }
 }

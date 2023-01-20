@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use lazy_static::lazy_static;
 
-use crate::event::{ArithmeticOperator, BoolOperator, EventExpression, EventQuery, Function, ValueExpression};
+use crate::event::{BinaryArithmeticOperator, BoolOperator, EventExpression, EventQuery, Function, UnaryArithmeticOperator, ValueExpression};
 use crate::model::TimeInterval;
 use crate::parsing::operator::Operator;
 use crate::parsing::parser::{parse_str, ParserExpressionTree, ParserExpressionTreeData};
@@ -71,6 +71,13 @@ pub fn transform_into_event_query(tree: ParserExpressionTree) -> Result<EventQue
                 op => Err(ConvertParserTreeErrorType::UndefinedOperator(op).with_location(tree.location))
             }
         }
+        ParserExpressionTreeData::UnaryOperator { operator, operand } => {
+            let operand = Box::new(transform_into_event_query(*operand)?);
+            match operator {
+                Operator::Single('!') => Ok(EventQuery::Invert { operand }),
+                op => Err(ConvertParserTreeErrorType::UndefinedOperator(op).with_location(tree.location))
+            }
+        }
         data => {
             Ok(EventQuery::Expression(transform_into_event_expression(data.with_location(tree.location))?))
         }
@@ -88,11 +95,11 @@ pub fn transform_into_event_expression(tree: ParserExpressionTree) -> Result<Eve
         ParserExpressionTreeData::BinaryOperator { operator, left, right } => {
             let left = Box::new(transform_into_event_expression(*left)?);
             let right = Box::new(transform_into_event_expression(*right)?);
-            Ok(EventExpression::Arithmetic { operator: transform_into_arithmetic_operator(operator, tree.location)?, left, right })
+            Ok(EventExpression::BinaryArithmetic { operator: transform_into_binary_arithmetic_operator(operator, tree.location)?, left, right })
         }
         ParserExpressionTreeData::UnaryOperator { operator, operand } => {
             let operand = Box::new(transform_into_event_expression(*operand)?);
-            Err(ConvertParserTreeErrorType::UndefinedOperator(operator).with_location(tree.location))
+            Ok(EventExpression::UnaryArithmetic { operator: transform_into_unary_arithmetic_operator(operator, tree.location)?, operand })
         }
         ParserExpressionTreeData::Call { name, mut arguments } => {
             match name.as_str() {
@@ -183,11 +190,11 @@ fn transform_into_value_expression(tree: ParserExpressionTree) -> Result<ValueEx
         ParserExpressionTreeData::BinaryOperator { operator, left, right } => {
             let left = Box::new(transform_into_value_expression(*left)?);
             let right = Box::new(transform_into_value_expression(*right)?);
-            Ok(ValueExpression::Arithmetic { operator: transform_into_arithmetic_operator(operator, tree.location)?, left, right })
+            Ok(ValueExpression::BinaryArithmetic { operator: transform_into_binary_arithmetic_operator(operator, tree.location)?, left, right })
         }
         ParserExpressionTreeData::UnaryOperator { operator, operand } => {
             let operand = Box::new(transform_into_value_expression(*operand)?);
-            Err(ConvertParserTreeErrorType::UndefinedOperator(operator).with_location(tree.location))
+            Ok(ValueExpression::UnaryArithmetic { operator: transform_into_unary_arithmetic_operator(operator, tree.location)?, operand })
         }
         ParserExpressionTreeData::Call { name, arguments } => {
             let mut transformed_arguments = Vec::new();
@@ -214,12 +221,19 @@ fn transform_into_time_interval(tree: ParserExpressionTree) -> Result<TimeInterv
     }
 }
 
-fn transform_into_arithmetic_operator(operator: Operator, location: TokenLocation) -> Result<ArithmeticOperator, ConvertParserTreeError> {
+fn transform_into_binary_arithmetic_operator(operator: Operator, location: TokenLocation) -> Result<BinaryArithmeticOperator, ConvertParserTreeError> {
     match operator {
-        Operator::Single('+') => Ok(ArithmeticOperator::Add),
-        Operator::Single('-') => Ok(ArithmeticOperator::Subtract),
-        Operator::Single('*') => Ok(ArithmeticOperator::Multiply),
-        Operator::Single('/') => Ok(ArithmeticOperator::Divide),
+        Operator::Single('+') => Ok(BinaryArithmeticOperator::Add),
+        Operator::Single('-') => Ok(BinaryArithmeticOperator::Subtract),
+        Operator::Single('*') => Ok(BinaryArithmeticOperator::Multiply),
+        Operator::Single('/') => Ok(BinaryArithmeticOperator::Divide),
+        op => Err(ConvertParserTreeErrorType::UndefinedOperator(op).with_location(location))
+    }
+}
+
+fn transform_into_unary_arithmetic_operator(operator: Operator, location: TokenLocation) -> Result<UnaryArithmeticOperator, ConvertParserTreeError> {
+    match operator {
+        Operator::Single('-') => Ok(UnaryArithmeticOperator::Negate),
         op => Err(ConvertParserTreeErrorType::UndefinedOperator(op).with_location(location))
     }
 }
@@ -398,6 +412,52 @@ fn test_convert_event_query3() {
                         )
                     }
                 ),
+            }
+        ),
+        transform_into_event_query(tree)
+    )
+}
+
+#[test]
+fn test_convert_event_query4() {
+    let tree = parse_str("!(avg(ind, 5) < 10 && corr(ind, dep, 5) > 0.5)").unwrap();
+
+    assert_eq!(
+        Ok(
+            EventQuery::Invert {
+                operand: Box::new(
+                    EventQuery::And {
+                        left: Box::new(
+                            EventQuery::Bool {
+                                operator: BoolOperator::LessThan,
+                                left: Box::new(
+                                    EventQuery::Expression(
+                                        EventExpression::Average {
+                                            value: ValueExpression::IndependentMetric,
+                                            interval: TimeInterval::Seconds(5.0)
+                                        }
+                                    )
+                                ),
+                                right: Box::new(EventQuery::Expression(EventExpression::Value(ValueExpression::Constant(10.0))))
+                            }
+                        ),
+                        right: Box::new(
+                            EventQuery::Bool {
+                                operator: BoolOperator::GreaterThan,
+                                left: Box::new(
+                                    EventQuery::Expression(
+                                        EventExpression::Correlation {
+                                            left: ValueExpression::IndependentMetric,
+                                            right: ValueExpression::DependentMetric,
+                                            interval: TimeInterval::Seconds(5.0)
+                                        }
+                                    )
+                                ),
+                                right: Box::new(EventQuery::Expression(EventExpression::Value(ValueExpression::Constant(0.5))))
+                            }
+                        )
+                    }
+                )
             }
         ),
         transform_into_event_query(tree)
