@@ -27,14 +27,14 @@ use crate::model::{EventsDefinition, TimeInterval, TimePoint, Value};
 
 #[tokio::main]
 async fn main() {
-    let console_config: ConsoleConfig = ConsoleConfig::from_args();
+    let command_line_config: CommandLineConfig = CommandLineConfig::from_args();
 
-    let config = match console_config.config_file {
+    let config = match command_line_config.config_file {
         None => Config::default(),
         Some(path) => Config::load_from_file(&path).unwrap()
     };
 
-    let events_def = EventsDefinition::load_from_file(&console_config.events_file).unwrap();
+    let events_def = EventsDefinition::load_from_file(&command_line_config.events_file).unwrap();
 
     setup_logger(&config).unwrap();
 
@@ -112,7 +112,7 @@ fn setup_logger(config: &Config) -> Result<(), fern::InitError> {
 
 #[derive(Debug, StructOpt)]
 #[structopt(name="panta", about="Panta - performance analysis tool")]
-struct ConsoleConfig {
+struct CommandLineConfig {
     /// The event definitions file
     events_file: PathBuf,
     /// The config file
