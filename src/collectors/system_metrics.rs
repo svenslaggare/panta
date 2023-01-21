@@ -208,8 +208,10 @@ impl SystemMetricCollector for DiskIOStatsCollector {
             let disk_stats_metrics = DiskStatsMetrics {
                 read_operations_rate_metric: metric_definitions.define(MetricName::sub("system.disk.read_operations.rate", disk)),
                 read_bytes_rate_metric: metric_definitions.define(MetricName::sub("system.disk.read_bytes.rate", disk)),
+                read_bytes_metric: metric_definitions.define(MetricName::sub("system.disk.read_bytes", disk)),
                 write_operations_rate_metric: metric_definitions.define(MetricName::sub("system.disk.write_operations.rate", disk)),
-                write_bytes_rate_metric: metric_definitions.define(MetricName::sub("system.disk.write_bytes.rate", disk))
+                write_bytes_rate_metric: metric_definitions.define(MetricName::sub("system.disk.write_bytes.rate", disk)),
+                write_bytes_metric: metric_definitions.define(MetricName::sub("system.disk.write_bytes", disk))
             };
             
             prev_values.insert(disk.to_owned(), (disk_stats_metrics, disk_stats));
@@ -232,10 +234,12 @@ impl SystemMetricCollector for DiskIOStatsCollector {
         for (disk, disk_stats) in DiskIOStatsCollector::get_disk_stats_values(&content) {
             if let Some((disk_stats_metrics, prev_disk_stats)) = self.prev_values.get_mut(disk) {
                 let diff_disk_stats = disk_stats.diff(prev_disk_stats);
-                metrics.insert(time, disk_stats_metrics.read_operations_rate_metric, diff_disk_stats.read_ios as f64 / elapsed_time);
-                metrics.insert(time, disk_stats_metrics.write_operations_rate_metric, diff_disk_stats.write_ios as f64 / elapsed_time);
+                metrics.insert(time, disk_stats_metrics.read_operations_rate_metric, diff_disk_stats.read_operations as f64 / elapsed_time);
+                metrics.insert(time, disk_stats_metrics.write_operations_rate_metric, diff_disk_stats.write_operations as f64 / elapsed_time);
                 metrics.insert(time, disk_stats_metrics.read_bytes_rate_metric, scale * (diff_disk_stats.read_bytes as f64 / elapsed_time));
                 metrics.insert(time, disk_stats_metrics.write_bytes_rate_metric, scale * (diff_disk_stats.write_bytes as f64 / elapsed_time));
+                metrics.insert(time, disk_stats_metrics.read_bytes_metric, scale * disk_stats.read_bytes as f64);
+                metrics.insert(time, disk_stats_metrics.write_bytes_metric, scale * disk_stats.write_bytes as f64);
 
                 // To handle when sampling too fast
                 if elapsed_time > 1.0 {
@@ -266,9 +270,9 @@ impl DiskIOStatsCollector {
                     (
                         parts[0],
                         DiskStats {
-                            read_ios: i64::from_str(parts[1]).unwrap(),
+                            read_operations: i64::from_str(parts[1]).unwrap(),
                             read_bytes: i64::from_str(parts[3]).unwrap() * block_size,
-                            write_ios: i64::from_str(parts[5]).unwrap(),
+                            write_operations: i64::from_str(parts[5]).unwrap(),
                             write_bytes: i64::from_str(parts[7]).unwrap() * block_size
                         }
                     )
@@ -285,24 +289,26 @@ impl DiskIOStatsCollector {
 
 struct DiskStatsMetrics {
     read_operations_rate_metric: MetricId,
+    read_bytes_metric: MetricId,
     read_bytes_rate_metric: MetricId,
     write_operations_rate_metric: MetricId,
+    write_bytes_metric: MetricId,
     write_bytes_rate_metric: MetricId,
 }
 
 struct DiskStats {
-    read_ios: i64,
+    read_operations: i64,
     read_bytes: i64,
-    write_ios: i64,
+    write_operations: i64,
     write_bytes: i64
 }
 
 impl DiskStats {
     pub fn diff(&self, other: &DiskStats) -> DiskStats {
         DiskStats {
-            read_ios: self.read_ios - other.read_ios,
+            read_operations: self.read_operations - other.read_operations,
             read_bytes: self.read_bytes - other.read_bytes,
-            write_ios: self.write_ios - other.write_ios,
+            write_operations: self.write_operations - other.write_operations,
             write_bytes: self.write_bytes - other.write_bytes
         }
     }
@@ -424,10 +430,12 @@ impl SystemMetricCollector for NetworkStatsCollector {
         let content = NetworkStatsCollector::get_network_stats_content()?;
         for (interface, network_stats) in NetworkStatsCollector::get_network_stats_values(&content) {
             let network_stats_metrics = NetworkStatsMetrics {
-                received_packets_metric: metric_definitions.define(MetricName::sub("system.net.received_packets.rate", interface)),
-                received_bytes_metric: metric_definitions.define(MetricName::sub("system.net.received_bytes.rate", interface)),
-                sent_packets_metric: metric_definitions.define(MetricName::sub("system.net.sent_packets.rate", interface)),
-                sent_bytes_metric: metric_definitions.define(MetricName::sub("system.net.sent_bytes.rate", interface))
+                received_packets_rate_metric: metric_definitions.define(MetricName::sub("system.net.received_packets.rate", interface)),
+                received_bytes_rate_metric: metric_definitions.define(MetricName::sub("system.net.received_bytes.rate", interface)),
+                received_bytes_metric: metric_definitions.define(MetricName::sub("system.net.received_bytes", interface)),
+                sent_packets_rate_metric: metric_definitions.define(MetricName::sub("system.net.sent_packets.rate", interface)),
+                sent_bytes_rate_metric: metric_definitions.define(MetricName::sub("system.net.sent_bytes.rate", interface)),
+                sent_bytes_metric: metric_definitions.define(MetricName::sub("system.net.sent_bytes", interface))
             };
 
             prev_values.insert(interface.to_owned(), (network_stats_metrics, network_stats));
@@ -450,10 +458,12 @@ impl SystemMetricCollector for NetworkStatsCollector {
         for (disk, disk_stats) in NetworkStatsCollector::get_network_stats_values(&content) {
             if let Some((disk_stats_metrics, prev_network_stats)) = self.prev_values.get_mut(disk) {
                 let diff_network_stats = disk_stats.diff(prev_network_stats);
-                metrics.insert(time, disk_stats_metrics.received_packets_metric, diff_network_stats.received_packets as f64 / elapsed_time);
-                metrics.insert(time, disk_stats_metrics.sent_packets_metric, diff_network_stats.sent_packets as f64 / elapsed_time);
-                metrics.insert(time, disk_stats_metrics.received_bytes_metric, scale * (diff_network_stats.received_bytes as f64 / elapsed_time));
-                metrics.insert(time, disk_stats_metrics.sent_bytes_metric, scale * (diff_network_stats.sent_bytes as f64 / elapsed_time));
+                metrics.insert(time, disk_stats_metrics.received_packets_rate_metric, diff_network_stats.received_packets as f64 / elapsed_time);
+                metrics.insert(time, disk_stats_metrics.sent_packets_rate_metric, diff_network_stats.sent_packets as f64 / elapsed_time);
+                metrics.insert(time, disk_stats_metrics.received_bytes_rate_metric, scale * (diff_network_stats.received_bytes as f64 / elapsed_time));
+                metrics.insert(time, disk_stats_metrics.sent_bytes_rate_metric, scale * (diff_network_stats.sent_bytes as f64 / elapsed_time));
+                metrics.insert(time, disk_stats_metrics.received_bytes_metric, scale * disk_stats.received_bytes as f64);
+                metrics.insert(time, disk_stats_metrics.sent_bytes_metric, scale * disk_stats.sent_bytes as f64);
 
                 // To handle when sampling too fast
                 if elapsed_time > 0.5 {
@@ -498,9 +508,11 @@ impl NetworkStatsCollector {
 }
 
 struct NetworkStatsMetrics {
-    received_packets_metric: MetricId,
+    received_packets_rate_metric: MetricId,
+    received_bytes_rate_metric: MetricId,
     received_bytes_metric: MetricId,
-    sent_packets_metric: MetricId,
+    sent_packets_rate_metric: MetricId,
+    sent_bytes_rate_metric: MetricId,
     sent_bytes_metric: MetricId,
 }
 
