@@ -9,7 +9,7 @@ events:
       - "system.net.received_bytes.rate"
       - "system.net.sent_bytes.rate"
       - "rabbitmq.publish_rate"
-    query: "corr(ind, dep, 5s) > 0.5 && avg(ind, 5s) > 0.1 && avg(dep, 5s) > 0.0"
+    query: "avg(ind, 5s) > 0.1 && corr(ind, dep, 5s) > 0.5"
     outputs:
       - - IndependentMetricName
         - "avg(ind, 5s)"
