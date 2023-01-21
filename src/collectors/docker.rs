@@ -42,9 +42,8 @@ impl DockerStatsCollector {
                 let name = name.replace("/", "");
 
                 collector.prev_stats.insert(
-                    id.to_owned(),
+                    name.clone(),
                     DockerStatsEntry {
-                        name: name.clone(),
                         stats: collector.get_container_docker_stats(id).await.unwrap(),
                         cpu_usage_metric: metric_definitions.define(MetricName::sub("docker.container.cpu_usage", &name)),
                         used_memory_bytes_metric: metric_definitions.define(MetricName::sub("docker.container.used_memory_bytes", &name)),
@@ -61,7 +60,7 @@ impl DockerStatsCollector {
     pub async fn collect(&mut self, time: TimePoint, metrics: &mut MetricValues) -> EventResult<()> {
         let memory_scale = 1.0 / (1024.0 * 1024.0);
 
-        let docker_stats_futures = self.prev_stats.keys().map(|id| self.get_container_docker_stats(id));
+        let docker_stats_futures = self.prev_stats.keys().map(|name| self.get_container_docker_stats(name));
         let docker_stats = join_all(docker_stats_futures).await;
 
         for (entry, new_stats) in self.prev_stats.values_mut().zip(docker_stats) {
@@ -99,7 +98,6 @@ impl DockerStatsCollector {
 }
 
 struct DockerStatsEntry {
-    name: String,
     stats: bollard::container::Stats,
     cpu_usage_metric: MetricId,
     used_memory_bytes_metric: MetricId,
