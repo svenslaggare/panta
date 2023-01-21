@@ -1,11 +1,12 @@
 use std::error::Error;
 use std::num::ParseFloatError;
-use std::path::Path;
 use std::str::FromStr;
 use log::{debug, error};
 
 use tokio::net::UnixDatagram;
 use tokio::sync::mpsc::UnboundedSender;
+
+use crate::config::CustomMetricsConfig;
 
 pub struct CustomMetricsCollector {
     uds_receiver: UnixDatagram,
@@ -13,14 +14,13 @@ pub struct CustomMetricsCollector {
 }
 
 impl CustomMetricsCollector {
-    pub fn new(result_sender: UnboundedSender<CustomMetric>) -> Result<CustomMetricsCollector, Box<dyn Error>> {
-        let socket_name = Path::new("panta.sock");
-
+    pub fn new(config: &CustomMetricsConfig,
+               result_sender: UnboundedSender<CustomMetric>) -> Result<CustomMetricsCollector, Box<dyn Error>> {
         #[allow(unused)] {
-            std::fs::remove_file(socket_name);
+            std::fs::remove_file(&config.socket_path);
         }
 
-        let uds_receiver = UnixDatagram::bind(socket_name)?;
+        let uds_receiver = UnixDatagram::bind(&config.socket_path)?;
 
         Ok(
             CustomMetricsCollector {

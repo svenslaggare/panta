@@ -6,6 +6,7 @@ mod engine;
 mod collectors;
 mod event_output;
 mod parsing;
+mod config;
 
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -15,6 +16,7 @@ use log::{error, trace};
 use tokio::task;
 
 use crate::collectors::manager::CollectorsManager;
+use crate::config::Config;
 
 use crate::engine::EventEngine;
 use crate::event::{BoolOperator, Event, EventExpression, EventOutputName, EventQuery, ValueExpression};
@@ -26,6 +28,7 @@ use crate::model::{EventsDefinition, MetricName, TimeInterval, TimePoint, Value}
 async fn main() {
     setup_logger().unwrap();
 
+    let config = Config::default();
     let events_def = EventsDefinition::load_from_file(Path::new("data/events.yaml")).unwrap();
     let sampling_rate = events_def.sampling_rate;
 
@@ -33,7 +36,10 @@ async fn main() {
     local.run_until(async move {
         let mut metric_definitions = MetricDefinitions::new();
         let mut engine = EventEngine::new();
-        let mut collectors_manager = CollectorsManager::new(&mut metric_definitions).await.unwrap();
+        let mut collectors_manager = CollectorsManager::new(
+            &config,
+            &mut metric_definitions
+        ).await.unwrap();
 
         metric_definitions.print();
 

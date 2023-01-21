@@ -1,5 +1,6 @@
 use fnv::FnvHashMap;
 use serde::Deserialize;
+use crate::config::RabbitMQMetricsConfig;
 
 use crate::metrics::{MetricDefinitions, MetricValues};
 use crate::model::{EventError, EventResult, MetricId, MetricName, TimePoint};
@@ -14,12 +15,12 @@ pub struct RabbitMQStatsCollector {
 }
 
 impl RabbitMQStatsCollector {
-    pub async fn new(base_url: &str, username: &str, password: &str,
+    pub async fn new(config: &RabbitMQMetricsConfig,
                      metric_definitions: &mut MetricDefinitions) -> EventResult<RabbitMQStatsCollector> {
         let mut collector = RabbitMQStatsCollector {
-            base_url: base_url.to_owned(),
-            username: username.to_owned(),
-            password: password.to_owned(),
+            base_url: config.base_url.to_owned(),
+            username: config.username.to_owned(),
+            password: config.password.to_owned(),
             virtual_host: "%2F".to_owned(),
             client: reqwest::Client::new(),
             queues: FnvHashMap::default()
@@ -189,7 +190,7 @@ async fn test_collect1() {
 
     let mut metric_definitions = MetricDefinitions::new();
     let mut rabbitmq_stats_collector = RabbitMQStatsCollector::new(
-        "http://localhost:15672", "guest", "guest",
+        &RabbitMQMetricsConfig::default(),
         &mut metric_definitions
     ).await.unwrap();
 

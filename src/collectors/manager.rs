@@ -9,6 +9,7 @@ use tokio::task;
 use crate::collectors::custom_metrics::{CustomMetric, CustomMetricsCollector};
 use crate::collectors::rabbitmq_metrics::RabbitMQStatsCollector;
 use crate::collectors::system_metrics::SystemMetricsCollector;
+use crate::config::Config;
 use crate::metrics::{MetricDefinitions, MetricValues};
 use crate::model::{EventResult, MetricName, TimeInterval, TimePoint};
 
@@ -19,16 +20,17 @@ pub struct CollectorsManager {
 }
 
 impl CollectorsManager {
-    pub async fn new(metric_definitions: &mut MetricDefinitions) -> EventResult<CollectorsManager> {
+    pub async fn new(config: &Config,
+                     metric_definitions: &mut MetricDefinitions) -> EventResult<CollectorsManager> {
         let system_metrics_collector = SystemMetricsCollector::new(metric_definitions)?;
         let rabbitmq_metrics_collector = RabbitMQStatsCollector::new(
-            "http://localhost:15672", "guest", "guest",
+            &config.rabbitmq_metrics,
             metric_definitions
         ).await?;
         let rabbitmq_metrics_collector = Rc::new(RefCell::new(rabbitmq_metrics_collector));
 
         let (custom_metrics_sender, custom_metrics_receiver) = mpsc::unbounded_channel();
-        let custom_metrics_collector = CustomMetricsCollector::new(custom_metrics_sender).unwrap();
+        let custom_metrics_collector = CustomMetricsCollector::new(&config.custom_metrics, custom_metrics_sender).unwrap();
         task::spawn_local(async move {
             custom_metrics_collector.collect().await.unwrap();
         });
