@@ -8,10 +8,12 @@ mod event_output;
 mod parsing;
 mod config;
 
-use std::path::Path;
+use std::path::{ PathBuf};
 use std::time::{Duration, Instant};
 
 use log::{error, trace};
+
+use structopt::StructOpt;
 
 use tokio::task;
 
@@ -25,14 +27,21 @@ use crate::model::{EventsDefinition, TimeInterval, TimePoint, Value};
 
 #[tokio::main]
 async fn main() {
-    setup_logger().unwrap();
+    let console_config: ConsoleConfig = ConsoleConfig::from_args();
 
-    let config = Config::default();
-    let events_def = EventsDefinition::load_from_file(Path::new("data/events.yaml")).unwrap();
-    let sampling_rate = events_def.sampling_rate;
+    let config = match console_config.config_file {
+        None => Config::default(),
+        Some(path) => Config::load_from_file(&path).unwrap()
+    };
+
+    let events_def = EventsDefinition::load_from_file(&console_config.events_file).unwrap();
+
+    setup_logger(&config).unwrap();
 
     let local = task::LocalSet::new();
     local.run_until(async move {
+        let sampling_rate = events_def.sampling_rate;
+
         let mut metric_definitions = MetricDefinitions::new();
         let mut engine = EventEngine::new();
         let mut collectors_manager = CollectorsManager::new(
@@ -84,7 +93,7 @@ async fn main() {
     }).await;
 }
 
-fn setup_logger() -> Result<(), fern::InitError> {
+fn setup_logger(config: &Config) -> Result<(), fern::InitError> {
     fern::Dispatch::new()
         .format(|out, message, record| {
             out.finish(format_args!(
@@ -95,8 +104,18 @@ fn setup_logger() -> Result<(), fern::InitError> {
                 message
             ))
         })
-        .level(log::LevelFilter::Info)
+        .level(config.log_level)
         .chain(std::io::stdout())
         .apply()?;
     Ok(())
+}
+
+#[derive(Debug, StructOpt)]
+#[structopt(name="panta", about="Panta - performance analysis tool")]
+struct ConsoleConfig {
+    /// The event definitions file
+    events_file: PathBuf,
+    /// The config file
+    #[structopt(long="config")]
+    config_file: Option<PathBuf>
 }
