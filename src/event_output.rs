@@ -1,12 +1,43 @@
 use std::fs::File;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use fnv::FnvHashMap;
+
 use log::info;
-use serde::Serialize;
+
+use serde::{Serialize, Deserialize};
 
 use crate::event::EventId;
 use crate::model::{EventError, EventResult, Value};
+
+#[derive(Debug, Deserialize)]
+pub struct EventOutputDefinition {
+    #[serde(rename="type")]
+    output_type: EventOutputType,
+    path: Option<PathBuf>
+}
+
+impl EventOutputDefinition {
+    pub fn create(&self) -> Result<BoxEventOutputHandler, String> {
+        match self.output_type {
+            EventOutputType::Console => {
+                Ok(Box::new(ConsoleEventOutputHandler::new()))
+            }
+            EventOutputType::JsonFile => {
+                let path = self.path.as_ref().ok_or_else(|| "Expected 'path' attribute.")?;
+                Ok(Box::new(JsonFileEventOutputHandler::new(&path).map_err(|err| format!("{:?}", err))?))
+            }
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub enum EventOutputType {
+    #[serde(rename="console")]
+    Console,
+    #[serde(rename="json_file")]
+    JsonFile
+}
 
 pub trait EventOutputHandler {
     fn handle_output(

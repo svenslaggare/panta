@@ -1,8 +1,26 @@
 use std::fmt::{Display};
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 use serde::de::{Error, Visitor};
 use serde::{Serialize, Deserialize, Deserializer};
+
+use crate::event::Event;
+use crate::event_output::EventOutputDefinition;
+
+#[derive(Debug, Deserialize)]
+pub struct EventsDefinition {
+    pub sampling_rate: f64,
+    pub events: Vec<Event>,
+    pub outputs: Vec<EventOutputDefinition>
+}
+
+impl EventsDefinition {
+    pub fn load_from_file(path: &Path) -> EventResult<EventsDefinition> {
+        let content = std::fs::read_to_string(path).map_err(|err| EventError::FailedToLoad(err.to_string()))?;
+        serde_yaml::from_str(&content).map_err(|err| EventError::FailedToLoad(err.to_string()))
+    }
+}
 
 pub type TimePoint = Instant;
 

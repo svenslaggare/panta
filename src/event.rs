@@ -1,8 +1,9 @@
 use std::fmt::{Display, Formatter};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::{Serialize, Deserialize, Deserializer};
 use serde::de::{Error, Visitor};
+use crate::event_output::{EventOutputHandler, EventOutputDefinition};
 
 use crate::model::{EventError, EventResult, MetricName, TimeInterval, Value};
 use crate::parsing::{parse_event_expression, parse_event_query};
@@ -13,19 +14,6 @@ pub struct EventId(pub u64);
 impl Display for EventId {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
-    }
-}
-
-#[derive(Debug, Deserialize)]
-pub struct EventsDefinition {
-    pub sampling_rate: f64,
-    pub events: Vec<Event>
-}
-
-impl EventsDefinition {
-    pub fn load_from_file(path: &Path) -> EventResult<EventsDefinition> {
-        let content = std::fs::read_to_string(path).map_err(|err| EventError::FailedToLoad(err.to_string()))?;
-        serde_yaml::from_str(&content).map_err(|err| EventError::FailedToLoad(err.to_string()))
     }
 }
 

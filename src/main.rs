@@ -17,10 +17,10 @@ use tokio::task;
 use crate::collectors::manager::CollectorsManager;
 
 use crate::engine::EventEngine;
-use crate::event::{BoolOperator, Event, EventExpression, EventOutputName, EventQuery, EventsDefinition, ValueExpression};
-use crate::event_output::{ConsoleEventOutputHandler, EventOutputHandlers, JsonFileEventOutputHandler};
+use crate::event::{BoolOperator, Event, EventExpression, EventOutputName, EventQuery, ValueExpression};
+use crate::event_output::{EventOutputHandlers};
 use crate::metrics::{MetricDefinitions, MetricValues};
-use crate::model::{MetricName, TimeInterval, TimePoint, Value};
+use crate::model::{EventsDefinition, MetricName, TimeInterval, TimePoint, Value};
 
 #[tokio::main]
 async fn main() {
@@ -37,14 +37,14 @@ async fn main() {
 
         metric_definitions.print();
 
-        // add_events(&metric_definitions, &mut engine);
         for event in events_def.events {
             engine.add_event(&metric_definitions, event).unwrap();
         }
 
         let mut event_output_handlers = EventOutputHandlers::new();
-        event_output_handlers.add_handler(Box::new(ConsoleEventOutputHandler::new()));
-        event_output_handlers.add_handler(Box::new(JsonFileEventOutputHandler::new(Path::new("output.ndjson")).unwrap()));
+        for event_output_def in events_def.outputs {
+            event_output_handlers.add_handler(event_output_def.create().unwrap());
+        }
 
         let mut values = MetricValues::new(TimeInterval::Minutes(0.5));
 

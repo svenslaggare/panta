@@ -15,3 +15,7 @@ events:
         - "avg(dep, 5s)"
       - - !Text "corr"
         - "corr(ind, dep, 5s)"
+outputs:
+  - type: console
+  - type: json_file
+    path: output.ndjson
