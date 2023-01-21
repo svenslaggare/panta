@@ -1,12 +1,14 @@
 use std::collections::HashMap;
+
+use fnv::FnvHashMap;
+
+use futures_util::future::join_all;
+use futures_util::stream::StreamExt;
+
 use bollard::container::ListContainersOptions;
 use bollard::Docker;
-use fnv::FnvHashMap;
-use futures_util::future::join_all;
 
-use futures_util::stream::StreamExt;
 use crate::metrics::{MetricDefinitions, MetricValues};
-
 use crate::model::{EventResult, MetricId, MetricName, TimePoint};
 
 pub struct DockerStatsCollector {
