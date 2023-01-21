@@ -91,8 +91,8 @@ pub struct JsonFileEventOutputHandler {
 impl JsonFileEventOutputHandler {
     pub fn new(path: &Path) -> EventResult<JsonFileEventOutputHandler> {
         let file = std::fs::OpenOptions::new()
-            .write(true)
             .create(true)
+            .append(true)
             .open(path)
             .map_err(|err| EventError::FailedToCreateFile(err))?;
 
