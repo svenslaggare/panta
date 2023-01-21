@@ -26,10 +26,10 @@ use crate::model::{EventsDefinition, MetricName, TimeInterval, TimePoint, Value}
 async fn main() {
     setup_logger().unwrap();
 
-    let local = task::LocalSet::new();
     let events_def = EventsDefinition::load_from_file(Path::new("data/events.yaml")).unwrap();
     let sampling_rate = events_def.sampling_rate;
 
+    let local = task::LocalSet::new();
     local.run_until(async move {
         let mut metric_definitions = MetricDefinitions::new();
         let mut engine = EventEngine::new();
@@ -105,9 +105,9 @@ fn add_events(metric_definitions: &MetricDefinitions, engine: &mut EventEngine) 
             name: "cpu_usage".to_owned(),
             independent_metric: MetricName::sub("system.cpu_usage", "all"),
             dependent_metric: vec![
-                MetricName::all("system.used_memory"),
-                MetricName::sub("system.disk_read_bytes", "sda2"),
-                MetricName::sub("system.disk_write_bytes", "sda2"),
+                MetricName::all("system.used_memory_bytes"),
+                MetricName::sub("system.disk.read_bytes.rate", "sda2"),
+                MetricName::sub("system.disk.write_bytes.rate", "sda2"),
                 MetricName::all("rabbitmq.publish_rate")
             ],
             query: EventQuery::And {

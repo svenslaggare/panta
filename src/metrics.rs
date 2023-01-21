@@ -85,12 +85,18 @@ impl MetricDefinitions {
     }
 
     pub fn print(&self) {
+        let mut num_metrics = 0;
+        let mut total_num_metric = 0;
         for (metric, sub_metrics) in &self.metrics {
+            num_metrics += 1;
             println!("{}", metric);
             for sub_metric in sub_metrics {
                 println!("\t{}", self.get_specific_name(*sub_metric).unwrap().sub.as_ref().map(|x| x.as_str()).unwrap_or(""));
+                total_num_metric += 1;
             }
         }
+
+        println!("Num metrics: {}, total: {}", num_metrics, total_num_metric);
     }
 }
 

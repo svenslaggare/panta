@@ -26,7 +26,8 @@ impl SystemMetricsCollector {
                     Box::new(CpuUsageCollector::new(metric_definitions)?),
                     Box::new(MemoryUsageCollector::new(metric_definitions)?),
                     Box::new(DiskUsageCollector::new(metric_definitions)?),
-                    Box::new(DiskIOStatsCollector::new(metric_definitions)?)
+                    Box::new(DiskIOStatsCollector::new(metric_definitions)?),
+                    Box::new(NetworkStatsCollector::new(metric_definitions)?)
                 ]
             }
         )
@@ -126,11 +127,11 @@ impl SystemMetricCollector for MemoryUsageCollector {
     fn new(metric_definitions: &mut MetricDefinitions) -> EventResult<MemoryUsageCollector> {
         Ok(
             MemoryUsageCollector {
-                total_memory_metric: metric_definitions.define(MetricName::all("system.total_memory")),
-                used_memory_metric: metric_definitions.define(MetricName::all("system.used_memory")),
+                total_memory_metric: metric_definitions.define(MetricName::all("system.total_memory_bytes")),
+                used_memory_metric: metric_definitions.define(MetricName::all("system.used_memory_bytes")),
                 used_memory_ratio_metric: metric_definitions.define(MetricName::all("system.used_memory_ratio")),
-                used_memory_rate_metric: metric_definitions.define(MetricName::all("system.used_memory_rate")),
-                available_memory_metric: metric_definitions.define(MetricName::all("system.available_memory")),
+                used_memory_rate_metric: metric_definitions.define(MetricName::all("system.used_memory_bytes.rate")),
+                available_memory_metric: metric_definitions.define(MetricName::all("system.available_memory_bytes")),
                 available_memory_metric_ratio: metric_definitions.define(MetricName::all("system.available_memory_ratio")),
                 prev_memory_usage: Some((Instant::now(), MemoryUsageCollector::get_memory_usage()?))
             }
@@ -205,10 +206,10 @@ impl SystemMetricCollector for DiskIOStatsCollector {
         let content = DiskIOStatsCollector::get_disk_content()?;
         for (disk, disk_stats) in DiskIOStatsCollector::get_disk_stats_values(&content) {
             let disk_stats_metrics = DiskStatsMetrics {
-                read_operations_metric: metric_definitions.define(MetricName::sub("system.disk_read_operations", disk)),
-                read_bytes_metric: metric_definitions.define(MetricName::sub("system.disk_read_bytes", disk)),
-                write_operations_metric: metric_definitions.define(MetricName::sub("system.disk_write_operations", disk)),
-                write_bytes_metric: metric_definitions.define(MetricName::sub("system.disk_write_bytes", disk))
+                read_operations_rate_metric: metric_definitions.define(MetricName::sub("system.disk.read_operations.rate", disk)),
+                read_bytes_rate_metric: metric_definitions.define(MetricName::sub("system.disk.read_bytes.rate", disk)),
+                write_operations_rate_metric: metric_definitions.define(MetricName::sub("system.disk.write_operations.rate", disk)),
+                write_bytes_rate_metric: metric_definitions.define(MetricName::sub("system.disk.write_bytes.rate", disk))
             };
             
             prev_values.insert(disk.to_owned(), (disk_stats_metrics, disk_stats));
@@ -231,10 +232,10 @@ impl SystemMetricCollector for DiskIOStatsCollector {
         for (disk, disk_stats) in DiskIOStatsCollector::get_disk_stats_values(&content) {
             if let Some((disk_stats_metrics, prev_disk_stats)) = self.prev_values.get_mut(disk) {
                 let diff_disk_stats = disk_stats.diff(prev_disk_stats);
-                metrics.insert(time, disk_stats_metrics.read_operations_metric, diff_disk_stats.read_ios as f64 / elapsed_time);
-                metrics.insert(time, disk_stats_metrics.write_operations_metric, diff_disk_stats.write_ios as f64 / elapsed_time);
-                metrics.insert(time, disk_stats_metrics.read_bytes_metric, scale * (diff_disk_stats.read_bytes as f64 / elapsed_time));
-                metrics.insert(time, disk_stats_metrics.write_bytes_metric, scale * (diff_disk_stats.write_bytes as f64 / elapsed_time));
+                metrics.insert(time, disk_stats_metrics.read_operations_rate_metric, diff_disk_stats.read_ios as f64 / elapsed_time);
+                metrics.insert(time, disk_stats_metrics.write_operations_rate_metric, diff_disk_stats.write_ios as f64 / elapsed_time);
+                metrics.insert(time, disk_stats_metrics.read_bytes_rate_metric, scale * (diff_disk_stats.read_bytes as f64 / elapsed_time));
+                metrics.insert(time, disk_stats_metrics.write_bytes_rate_metric, scale * (diff_disk_stats.write_bytes as f64 / elapsed_time));
 
                 // To handle when sampling too fast
                 if elapsed_time > 1.0 {
@@ -283,10 +284,10 @@ impl DiskIOStatsCollector {
 }
 
 struct DiskStatsMetrics {
-    read_operations_metric: MetricId,
-    read_bytes_metric: MetricId,
-    write_operations_metric: MetricId,
-    write_bytes_metric: MetricId,
+    read_operations_rate_metric: MetricId,
+    read_bytes_rate_metric: MetricId,
+    write_operations_rate_metric: MetricId,
+    write_bytes_rate_metric: MetricId,
 }
 
 struct DiskStats {
@@ -344,10 +345,10 @@ impl SystemMetricCollector for DiskUsageCollector {
                 disk.to_owned(),
                 DiskUsageEntry {
                     mount: CString::new(mount).unwrap(),
-                    total_disk_metric: metric_definitions.define(MetricName::sub("system.total_disk", disk)),
-                    used_disk_metric: metric_definitions.define(MetricName::sub("system.used_disk", disk)),
-                    used_disk_ratio_metric: metric_definitions.define(MetricName::sub("system.used_disk_ratio", disk)),
-                    free_disk_metric: metric_definitions.define(MetricName::sub("system.free_disk", disk))
+                    total_disk_metric: metric_definitions.define(MetricName::sub("system.disk.total_bytes", disk)),
+                    used_disk_metric: metric_definitions.define(MetricName::sub("system.disk.used_bytes", disk)),
+                    used_disk_ratio_metric: metric_definitions.define(MetricName::sub("system.disk.used_ratio", disk)),
+                    free_disk_metric: metric_definitions.define(MetricName::sub("system.disk.free_bytes", disk))
                 }
             );
         }
@@ -408,6 +409,118 @@ pub struct DiskUsageEntry {
     used_disk_metric: MetricId,
     used_disk_ratio_metric: MetricId,
     free_disk_metric: MetricId
+}
+
+pub struct NetworkStatsCollector {
+    prev_values: FnvHashMap<String, (NetworkStatsMetrics, NetworkStats)>,
+    prev_measurement_time: Instant
+}
+
+impl SystemMetricCollector for NetworkStatsCollector {
+    fn new(metric_definitions: &mut MetricDefinitions) -> EventResult<NetworkStatsCollector> {
+        let mut prev_values = FnvHashMap::default();
+
+        let measurement_time = Instant::now();
+        let content = NetworkStatsCollector::get_network_stats_content()?;
+        for (interface, network_stats) in NetworkStatsCollector::get_network_stats_values(&content) {
+            let network_stats_metrics = NetworkStatsMetrics {
+                received_packets_metric: metric_definitions.define(MetricName::sub("system.net.received_packets.rate", interface)),
+                received_bytes_metric: metric_definitions.define(MetricName::sub("system.net.received_bytes.rate", interface)),
+                sent_packets_metric: metric_definitions.define(MetricName::sub("system.net.sent_packets.rate", interface)),
+                sent_bytes_metric: metric_definitions.define(MetricName::sub("system.net.sent_bytes.rate", interface))
+            };
+
+            prev_values.insert(interface.to_owned(), (network_stats_metrics, network_stats));
+        }
+
+        Ok(
+            NetworkStatsCollector {
+                prev_measurement_time: measurement_time,
+                prev_values
+            }
+        )
+    }
+
+    fn collect(&mut self, time: TimePoint, metrics: &mut MetricValues) -> EventResult<()> {
+        let scale = 1.0 / (1024.0 * 1024.0);
+
+        let measurement_time = Instant::now();
+        let elapsed_time = (measurement_time - self.prev_measurement_time).as_secs_f64();
+        let content = NetworkStatsCollector::get_network_stats_content()?;
+        for (disk, disk_stats) in NetworkStatsCollector::get_network_stats_values(&content) {
+            if let Some((disk_stats_metrics, prev_network_stats)) = self.prev_values.get_mut(disk) {
+                let diff_network_stats = disk_stats.diff(prev_network_stats);
+                metrics.insert(time, disk_stats_metrics.received_packets_metric, diff_network_stats.received_packets as f64 / elapsed_time);
+                metrics.insert(time, disk_stats_metrics.sent_packets_metric, diff_network_stats.sent_packets as f64 / elapsed_time);
+                metrics.insert(time, disk_stats_metrics.received_bytes_metric, scale * (diff_network_stats.received_bytes as f64 / elapsed_time));
+                metrics.insert(time, disk_stats_metrics.sent_bytes_metric, scale * (diff_network_stats.sent_bytes as f64 / elapsed_time));
+
+                // To handle when sampling too fast
+                if elapsed_time > 0.5 {
+                    *prev_network_stats = disk_stats;
+                    self.prev_measurement_time = measurement_time;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+}
+
+impl NetworkStatsCollector {
+    fn get_network_stats_values<'a>(content: &'a str) -> impl Iterator<Item=(&'a str, NetworkStats)> + 'a {
+        content
+            .lines()
+            .skip(2)
+            .map(|line| {
+                let parts = line.split(" ").filter(|p| !p.is_empty()).collect::<Vec<_>>();
+
+                Some(
+                    (
+                        parts[0].split(":").next().unwrap(),
+                        NetworkStats {
+                            received_packets: i64::from_str(parts[2]).unwrap(),
+                            received_bytes: i64::from_str(parts[1]).unwrap(),
+                            sent_packets: i64::from_str(parts[10]).unwrap(),
+                            sent_bytes: i64::from_str(parts[9]).unwrap()
+                        }
+                    )
+                )
+            })
+            .flatten()
+    }
+
+    fn get_network_stats_content() -> EventResult<String> {
+        std::fs::read_to_string("/proc/net/dev")
+            .map_err(|err| EventError::FailedToCollectSystemMetric(err))
+    }
+}
+
+struct NetworkStatsMetrics {
+    received_packets_metric: MetricId,
+    received_bytes_metric: MetricId,
+    sent_packets_metric: MetricId,
+    sent_bytes_metric: MetricId,
+}
+
+#[derive(Debug)]
+struct NetworkStats {
+    received_packets: i64,
+    received_bytes: i64,
+    sent_packets: i64,
+    sent_bytes: i64
+}
+
+impl NetworkStats {
+    pub fn diff(&self, other: &NetworkStats) -> NetworkStats {
+        NetworkStats {
+            received_packets: self.received_packets - other.received_packets,
+            received_bytes: self.received_bytes - other.received_bytes,
+            sent_packets: self.sent_packets - other.sent_packets,
+            sent_bytes: self.sent_bytes - other.sent_bytes
+        }
+    }
 }
 
 #[test]
@@ -491,6 +604,23 @@ fn test_disk_usage_collector1() {
 
     let mut metrics = MetricValues::new(TimeInterval::Minutes(1.0));
     disk_usage_collector.collect(TimePoint::now(), &mut metrics).unwrap();
+
+    for (metric, value) in metrics.iter() {
+        println!("{}: {}", metric_definitions.get_specific_name(metric).unwrap(), value)
+    }
+}
+
+#[test]
+fn test_network_stats_collector1() {
+    use crate::model::TimeInterval;
+
+    let mut metric_definitions = MetricDefinitions::new();
+    let mut network_stats_collector = NetworkStatsCollector::new(&mut metric_definitions).unwrap();
+
+    std::thread::sleep(std::time::Duration::from_secs_f64(0.5));
+
+    let mut metrics = MetricValues::new(TimeInterval::Minutes(1.0));
+    network_stats_collector.collect(TimePoint::now(), &mut metrics).unwrap();
 
     for (metric, value) in metrics.iter() {
         println!("{}: {}", metric_definitions.get_specific_name(metric).unwrap(), value)

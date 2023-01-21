@@ -3,9 +3,11 @@ events:
   - name: "cpu_usage"
     independent_metric: "system.cpu_usage:all"
     dependent_metric:
-      - "system.used_memory"
-      - "system.disk_read_bytes:sda2"
-      - "system.disk_write_bytes:sda2"
+      - "system.used_memory_bytes"
+      - "system.disk.read_bytes.rate:sda2"
+      - "system.disk.write_bytes.rate:sda2"
+      - "system.net.received_bytes.rate"
+      - "system.net.sent_bytes.rate"
       - "rabbitmq.publish_rate"
     query: "corr(ind, dep, 5s) > 0.5 && avg(ind, 5s) > 0.1 && avg(dep, 5s) > 0.0"
     outputs:
