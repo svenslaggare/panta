@@ -1,7 +1,7 @@
 use fnv::FnvHashMap;
 use serde::Deserialize;
-use crate::config::RabbitMQMetricsConfig;
 
+use crate::config::RabbitMQMetricsConfig;
 use crate::metrics::{MetricDefinitions, MetricValues};
 use crate::model::{EventError, EventResult, MetricId, MetricName, TimePoint};
 

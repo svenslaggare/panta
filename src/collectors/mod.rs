@@ -1,4 +1,5 @@
 pub mod manager;
-pub mod custom_metrics;
-pub mod rabbitmq_metrics;
-pub mod system_metrics;
+pub mod system;
+pub mod custom;
+pub mod rabbitmq;
+pub mod docker;

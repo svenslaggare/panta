@@ -169,6 +169,7 @@ impl Display for Value {
 pub enum EventError {
     FailedToCollectSystemMetric(std::io::Error),
     FailedToCollectRabbitMQMetric(reqwest::Error),
+    FailedToCollectDockerMetric(bollard::errors::Error),
     MetricNotFound(MetricName),
     FailedToLoad(String),
     FailedToCreateFile(std::io::Error),
@@ -176,6 +177,12 @@ pub enum EventError {
 }
 
 pub type EventResult<T> = Result<T, EventError>;
+
+impl From<bollard::errors::Error> for EventError {
+    fn from(err: bollard::errors::Error) -> Self {
+        EventError::FailedToCollectDockerMetric(err)
+    }
+}
 
 #[test]
 fn test_deserialize_metric_name1() {
