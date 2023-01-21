@@ -215,6 +215,11 @@ impl EventEngine {
                 let aggregate = self.aggregators.add_variance(value_id, *interval);
                 Ok(CompiledEventExpression::Variance(aggregate))
             }
+            EventExpression::StandardDeviation { value, interval } => {
+                let value_id = self.compile_value(context, value, value_generators)?;
+                let aggregate = self.aggregators.add_variance(value_id, *interval);
+                Ok(CompiledEventExpression::StandardDeviation(aggregate))
+            }
             EventExpression::Covariance { left, right, interval } => {
                 let mut left_context = CompiledValueExpressionContext::new(context);
                 let left = CompiledValueExpression::compile(&left, &mut left_context)?;
@@ -396,6 +401,7 @@ impl EventEngine {
             CompiledEventExpression::Value(value) => Some(Value::Float(values.get(&value).cloned()?)),
             CompiledEventExpression::Average(aggregate) => Some(Value::Float(self.aggregators.average(aggregate)?)),
             CompiledEventExpression::Variance(aggregate) => Some(Value::Float(self.aggregators.variance(aggregate)?)),
+            CompiledEventExpression::StandardDeviation(aggregate) => Some(Value::Float(self.aggregators.standard_deviation(aggregate)?)),
             CompiledEventExpression::Covariance(aggregate) => Some(Value::Float(self.aggregators.covariance(aggregate)?)),
             CompiledEventExpression::Correlation(aggregate) => Some(Value::Float(self.aggregators.correlation(aggregate)?)),
             CompiledEventExpression::BinaryArithmetic { operator, left, right } => {
@@ -451,11 +457,12 @@ impl EventEngine {
                             values: &FnvHashMap<ValueId, f64>,
                             expression: &CompiledEventExpression) -> Option<String> {
         match expression {
-            CompiledEventExpression::Value(value) => Some(format!("Value({})", values.get(&value).cloned()?)),
-            CompiledEventExpression::Average(aggregate) => Some(format!("Avg({})", self.aggregators.average(aggregate)?)),
-            CompiledEventExpression::Variance(aggregate) => Some(format!("Var({})", self.aggregators.variance(aggregate)?)),
-            CompiledEventExpression::Covariance(aggregate) => Some(format!("Cov({})", self.aggregators.covariance(aggregate)?)),
-            CompiledEventExpression::Correlation(aggregate) => Some(format!("Corr({})", self.aggregators.correlation(aggregate)?)),
+            CompiledEventExpression::Value(value) => Some(format!("{}", values.get(&value).cloned()?)),
+            CompiledEventExpression::Average(aggregate) => Some(format!("avg({})", self.aggregators.average(aggregate)?)),
+            CompiledEventExpression::Variance(aggregate) => Some(format!("var({})", self.aggregators.variance(aggregate)?)),
+            CompiledEventExpression::StandardDeviation(aggregate) => Some(format!("std({})", self.aggregators.standard_deviation(aggregate)?)),
+            CompiledEventExpression::Covariance(aggregate) => Some(format!("cov({})", self.aggregators.covariance(aggregate)?)),
+            CompiledEventExpression::Correlation(aggregate) => Some(format!("corr({})", self.aggregators.correlation(aggregate)?)),
             CompiledEventExpression::BinaryArithmetic { operator, left, right } => {
                 let left = self.expression_to_string(values, left)?;
                 let right = self.expression_to_string(values, right)?;
@@ -508,6 +515,7 @@ enum CompiledEventExpression {
     Value(ValueId),
     Average(AverageAggregate),
     Variance(VarianceAggregate),
+    StandardDeviation(VarianceAggregate),
     Covariance(CovarianceAggregate),
     Correlation(CorrelationAggregate),
     BinaryArithmetic { operator: BinaryArithmeticOperator, left: Box<CompiledEventExpression>, right: Box<CompiledEventExpression> },

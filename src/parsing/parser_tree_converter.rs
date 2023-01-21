@@ -102,9 +102,7 @@ pub fn transform_into_event_expression(tree: ParserExpressionTree) -> Result<Eve
         ParserExpressionTreeData::Call { name, mut arguments } => {
             match name.as_str() {
                 "avg" => {
-                    if arguments.len() != 2 {
-                        return Err(ConvertParserTreeErrorType::IncorrectNumberOfArgument(2, arguments.len()).with_location(tree.location));
-                    }
+                    assert_num_arguments(tree.location, 2, arguments.len())?;
 
                     Ok(
                         EventExpression::Average {
@@ -114,9 +112,7 @@ pub fn transform_into_event_expression(tree: ParserExpressionTree) -> Result<Eve
                     )
                 }
                 "var" => {
-                    if arguments.len() != 2 {
-                        return Err(ConvertParserTreeErrorType::IncorrectNumberOfArgument(2, arguments.len()).with_location(tree.location));
-                    }
+                    assert_num_arguments(tree.location, 2, arguments.len())?;
 
                     Ok(
                         EventExpression::Variance {
@@ -125,10 +121,18 @@ pub fn transform_into_event_expression(tree: ParserExpressionTree) -> Result<Eve
                         }
                     )
                 }
+                "std" => {
+                    assert_num_arguments(tree.location, 2, arguments.len())?;
+
+                    Ok(
+                        EventExpression::StandardDeviation {
+                            value: transform_into_value_expression(arguments.remove(0))?,
+                            interval: transform_into_time_interval(arguments.remove(0))?
+                        }
+                    )
+                }
                 "cov" => {
-                    if arguments.len() != 3 {
-                        return Err(ConvertParserTreeErrorType::IncorrectNumberOfArgument(3, arguments.len()).with_location(tree.location));
-                    }
+                    assert_num_arguments(tree.location, 3, arguments.len())?;
 
                     Ok(
                         EventExpression::Covariance {
@@ -139,9 +143,7 @@ pub fn transform_into_event_expression(tree: ParserExpressionTree) -> Result<Eve
                     )
                 }
                 "corr" => {
-                    if arguments.len() != 3 {
-                        return Err(ConvertParserTreeErrorType::IncorrectNumberOfArgument(3, arguments.len()).with_location(tree.location));
-                    }
+                    assert_num_arguments(tree.location, 3, arguments.len())?;
 
                     Ok(
                         EventExpression::Correlation {
@@ -166,6 +168,14 @@ pub fn transform_into_event_expression(tree: ParserExpressionTree) -> Result<Eve
                 }
             }
         }
+    }
+}
+
+fn assert_num_arguments(location: TokenLocation, expected: usize, actual: usize) -> Result<(), ConvertParserTreeError> {
+    if actual != expected {
+        Err(ConvertParserTreeErrorType::IncorrectNumberOfArgument(expected, actual).with_location(location))
+    } else {
+        Ok(())
     }
 }
 
