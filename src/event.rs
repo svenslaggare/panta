@@ -1,11 +1,9 @@
 use std::fmt::{Display, Formatter};
-use std::path::{Path, PathBuf};
 
 use serde::{Serialize, Deserialize, Deserializer};
 use serde::de::{Error, Visitor};
-use crate::event_output::{EventOutputHandler, EventOutputDefinition};
 
-use crate::model::{EventError, EventResult, MetricName, TimeInterval, Value};
+use crate::model::{MetricName, TimeInterval, Value};
 use crate::parsing::{parse_event_expression, parse_event_query};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

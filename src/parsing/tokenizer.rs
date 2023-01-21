@@ -129,11 +129,7 @@ pub enum ParserErrorType {
     ExpectedRightParentheses,
     ExpectedExpression,
     ExpectedArgumentListContinuation,
-    ExpectedIdentifier,
-    ExpectedString,
-    ExpectedInt,
     ExpectedOperator,
-    ExpectedSpecificOperator(Operator),
     ExpectedVariableReference,
     NotDefinedBinaryOperator(Operator),
     NotDefinedUnaryOperator(Operator),
@@ -151,11 +147,7 @@ impl std::fmt::Display for ParserErrorType {
             ParserErrorType::ExpectedRightParentheses => { write!(f, "Expected ')'") }
             ParserErrorType::ExpectedExpression => { write!(f, "Expected an expression") }
             ParserErrorType::ExpectedArgumentListContinuation => { write!(f, "Expected ',' or ')'") }
-            ParserErrorType::ExpectedIdentifier => { write!(f, "Expected an identifier") }
-            ParserErrorType::ExpectedString => { write!(f, "Expected a string") }
-            ParserErrorType::ExpectedInt => { write!(f, "Expected an integer") }
             ParserErrorType::ExpectedOperator => { write!(f, "Expected an operator") }
-            ParserErrorType::ExpectedSpecificOperator(operator) => { write!(f, "Expected '{}' operator", operator) }
             ParserErrorType::ExpectedVariableReference => { write!(f, "Expected variable reference") }
             ParserErrorType::NotDefinedBinaryOperator(operator) => { write!(f, "'{}' is not a valid binary operator", operator) }
             ParserErrorType::NotDefinedUnaryOperator(operator) => { write!(f, "'{}' is not a valid unary operator", operator) }

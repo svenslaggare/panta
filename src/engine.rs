@@ -3,10 +3,9 @@ use fnv::{FnvHashMap, FnvHashSet};
 
 use crate::aggregator::{AggregateOperations, AverageAggregate, CorrelationAggregate, CovarianceAggregate, VarianceAggregate};
 use crate::event::{BinaryArithmeticOperator, BoolOperator, Event, EventExpression, EventId, EventOutputName, EventQuery, Function, UnaryArithmeticOperator, ValueExpression};
-use crate::event_output::join_event_output;
 use crate::metrics::{MetricDefinitions, MetricValues};
 
-use crate::model::{EventResult, MetricId, MetricName, TimeInterval, TimePoint, Value, ValueId};
+use crate::model::{EventResult, MetricId, TimePoint, Value, ValueId};
 
 pub struct EventEngine {
     next_event_id: EventId,
@@ -60,7 +59,7 @@ impl EventEngine {
     }
 
     fn compile_event(&mut self, metric_definitions: &MetricDefinitions, event_id: EventId, event: &Event) -> EventResult<()> {
-        let mut sub_query_id = 0;
+        let mut sub_event_id = EventId(1);
         for dependent_metric in event.dependent_metric.iter() {
             for (independent_metric_id, dependent_metric_id) in itertools::iproduct!(metric_definitions.expand(&event.independent_metric)?,
                                                                                      metric_definitions.expand(dependent_metric)?) {
@@ -88,7 +87,7 @@ impl EventEngine {
                 self.compiled_events.push(
                     CompiledEvent {
                         id: event_id,
-                        sub_id: sub_query_id as u64,
+                        sub_id: sub_event_id,
                         name: event.name.clone(),
                         independent_metric: independent_metric_id,
                         dependent_metric: dependent_metric_id,
@@ -120,7 +119,7 @@ impl EventEngine {
                     }
                 }
 
-                sub_query_id += 1;
+                sub_event_id.0 += 1;
             }
         }
 
@@ -307,11 +306,11 @@ impl EventEngine {
         value_id
     }
 
-    pub fn handle_values<F: FnMut(EventId, &str, Vec<(String, Value)>)>(&mut self,
-                                                                        metric_definitions: &MetricDefinitions,
-                                                                        time: TimePoint,
-                                                                        metrics: &MetricValues,
-                                                                        mut on_event: F) {
+    pub fn handle_values<F: FnMut(EventId, EventId, &str, Vec<(String, Value)>)>(&mut self,
+                                                                                 metric_definitions: &MetricDefinitions,
+                                                                                 time: TimePoint,
+                                                                                 metrics: &MetricValues,
+                                                                                 mut on_event: F) {
         let mut values_to_compute = FnvHashSet::default();
         for metric in metrics.keys() {
             if let Some(generators) = self.value_generators_for_metric.get(&metric) {
@@ -336,6 +335,7 @@ impl EventEngine {
                 if accept {
                     on_event(
                         event.id,
+                        event.sub_id,
                         &event.name,
                         self.evaluate_outputs(metric_definitions, &event, &values).collect()
                     );
@@ -481,7 +481,7 @@ type Values = FnvHashMap<ValueId, f64>;
 #[derive(Debug)]
 struct CompiledEvent {
     id: EventId,
-    sub_id: u64,
+    sub_id: EventId,
     name: String,
     independent_metric: MetricId,
     dependent_metric: MetricId,
@@ -623,7 +623,10 @@ fn test_event_engine1() {
     use std::ops::Add;
     use std::rc::Rc;
     use std::time::{Duration};
+
     use assert_approx_eq::assert_approx_eq;
+
+    use crate::model::{MetricName, TimeInterval};
 
     let mut metric_definitions = MetricDefinitions::new();
     let x = metric_definitions.define(MetricName::all("x"));
@@ -697,7 +700,7 @@ fn test_event_engine1() {
     println!();
 
     let events = Rc::new(RefCell::new(Vec::new()));
-    let on_event = |event_id, name: &str, outputs: Vec<(String, Value)>| {
+    let on_event = |event_id, _, name: &str, outputs: Vec<(String, Value)>| {
         events.borrow_mut().push(outputs.clone());
         print_output_for_test(event_id, name, &outputs);
     };
@@ -745,7 +748,10 @@ fn test_event_engine2() {
     use std::ops::Add;
     use std::rc::Rc;
     use std::time::{Duration};
+
     use assert_approx_eq::assert_approx_eq;
+
+    use crate::model::{MetricName, TimeInterval};
 
     let mut metric_definitions = MetricDefinitions::new();
     let x = metric_definitions.define(MetricName::all("x"));
@@ -818,7 +824,7 @@ fn test_event_engine2() {
     println!();
 
     let events = Rc::new(RefCell::new(Vec::new()));
-    let on_event = |event_id, name: &str, outputs: Vec<(String, Value)>| {
+    let on_event = |event_id, _, name: &str, outputs: Vec<(String, Value)>| {
         events.borrow_mut().push(outputs.clone());
         print_output_for_test(event_id, name, &outputs);
     };
@@ -862,6 +868,6 @@ fn test_event_engine2() {
 
 #[cfg(test)]
 fn print_output_for_test(event_id: EventId, name: &str, outputs: &Vec<(String, Value)>) {
-    let output_string = join_event_output(outputs);
+    let output_string = crate::event_output::join_event_output(outputs);
     println!("Event generated for {} (#{}), {}", event_id, name, output_string);
 }

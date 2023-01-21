@@ -2,7 +2,7 @@ use fnv::FnvHashMap;
 use serde::Deserialize;
 
 use crate::metrics::{MetricDefinitions, MetricValues};
-use crate::model::{EventError, EventResult, MetricId, MetricName, TimeInterval, TimePoint};
+use crate::model::{EventError, EventResult, MetricId, MetricName, TimePoint};
 
 pub struct RabbitMQStatsCollector {
     base_url: String,
@@ -108,14 +108,6 @@ impl RabbitMQStatsCollector {
             .error_for_status()?
             .json().await
     }
-
-    async fn collect_queue_info(&self, queue: &str) -> Result<RabbitMQQueueInfo, reqwest::Error> {
-        self.client.get(format!("{}/api/queues/{}/{}", self.base_url, self.virtual_host, queue))
-            .basic_auth(&self.username, Some(&self.password))
-            .send().await?
-            .error_for_status()?
-            .json().await
-    }
 }
 
 struct QueueEntry {
@@ -193,6 +185,8 @@ pub struct RabbitMQDetails {
 
 #[tokio::test(flavor="multi_thread", worker_threads=1)]
 async fn test_collect1() {
+    use crate::model::TimeInterval;
+
     let mut metric_definitions = MetricDefinitions::new();
     let mut rabbitmq_stats_collector = RabbitMQStatsCollector::new(
         "http://localhost:15672", "guest", "guest",

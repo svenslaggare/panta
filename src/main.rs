@@ -62,7 +62,7 @@ async fn main() {
                 &metric_definitions,
                 metric_time,
                 &values,
-                |event_id, name, outputs: Vec<(String, Value)>| {
+                |event_id, _, name, outputs: Vec<(String, Value)>| {
                     if let Err(err) = event_output_handlers.handle_output(&event_id, name, &outputs) {
                         error!("Failed generating output due to: {:?}", err);
                     }

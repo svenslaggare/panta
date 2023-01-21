@@ -1,10 +1,7 @@
 use std::collections::{VecDeque};
-use std::ops::Add;
 use std::time::{Duration};
 
 use fnv::FnvHashMap;
-
-use assert_approx_eq::assert_approx_eq;
 
 use crate::model::{TimeInterval, TimePoint, ValueId};
 
@@ -224,18 +221,12 @@ impl SumAggregator {
             None
         }
     }
-
-    fn sum_linear(&self) -> Option<f64> {
-        if !self.values.is_empty() {
-            Some(self.values.iter().map(|(_, value)| value).sum::<f64>())
-        } else {
-            None
-        }
-    }
 }
 
 #[test]
 fn test_average1() {
+    use std::ops::Add;
+
     let mut operations = AggregateOperations::new();
     let t0 = TimePoint::now();
 
@@ -262,6 +253,9 @@ fn test_average1() {
 
 #[test]
 fn test_average2() {
+    use std::ops::Add;
+    use assert_approx_eq::assert_approx_eq;
+
     let mut operations = AggregateOperations::new();
     let t0 = TimePoint::now();
 
@@ -289,6 +283,9 @@ fn test_average2() {
 
 #[test]
 fn test_variance1() {
+    use std::ops::Add;
+    use assert_approx_eq::assert_approx_eq;
+
     let mut operations = AggregateOperations::new();
     let t0 = TimePoint::now();
 
@@ -315,6 +312,9 @@ fn test_variance1() {
 
 #[test]
 fn test_covariance1() {
+    use std::ops::Add;
+    use assert_approx_eq::assert_approx_eq;
+
     let mut operations = AggregateOperations::new();
     let t0 = TimePoint::now();
 
@@ -344,6 +344,9 @@ fn test_covariance1() {
 
 #[test]
 fn test_covariance2() {
+    use std::ops::Add;
+    use assert_approx_eq::assert_approx_eq;
+
     let mut operations = AggregateOperations::new();
     let t0 = TimePoint::now();
 
@@ -376,6 +379,9 @@ fn test_covariance2() {
 
 #[test]
 fn test_correlation1() {
+    use std::ops::Add;
+    use assert_approx_eq::assert_approx_eq;
+
     let mut operations = AggregateOperations::new();
     let t0 = TimePoint::now();
 

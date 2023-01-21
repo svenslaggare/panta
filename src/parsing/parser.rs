@@ -1,6 +1,6 @@
 use crate::model::TimeInterval;
 use crate::parsing::operator::{BinaryOperators, Operator, UnaryOperators};
-use crate::parsing::tokenizer::{ParserError, ParserErrorType, ParserToken, Token, tokenize, tokenize_simple, TokenLocation};
+use crate::parsing::tokenizer::{ParserError, ParserErrorType, ParserToken, Token, tokenize, TokenLocation};
 
 pub fn parse_str(text: &str) -> ParserResult<ParserExpressionTree> {
     let tokens = tokenize(text)?;
@@ -108,7 +108,12 @@ impl<'a> Parser<'a> {
 
     pub fn parse(&mut self) -> ParserResult<ParserExpressionTree> {
         self.next()?;
-        self.parse_expression_internal()
+        let tree = self.parse_expression_internal()?;
+        if self.current() == &Token::End {
+            Ok(tree)
+        } else {
+            Err(self.create_error(ParserErrorType::TooManyTokens))
+        }
     }
 
     fn parse_expression_internal(&mut self) -> ParserResult<ParserExpressionTree> {
@@ -327,7 +332,10 @@ impl<'a> Parser<'a> {
     }
 }
 
+#[cfg(test)]
 fn parse_str_test(text: &str) -> ParserResult<ParserExpressionTree> {
+    use crate::parsing::tokenizer::tokenize_simple;
+
     let tokens = tokenize_simple(text)?;
 
     let binary_operators = BinaryOperators::new();

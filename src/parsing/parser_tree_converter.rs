@@ -5,7 +5,7 @@ use lazy_static::lazy_static;
 use crate::event::{BinaryArithmeticOperator, BoolOperator, EventExpression, EventQuery, Function, UnaryArithmeticOperator, ValueExpression};
 use crate::model::TimeInterval;
 use crate::parsing::operator::Operator;
-use crate::parsing::parser::{parse_str, ParserExpressionTree, ParserExpressionTreeData};
+use crate::parsing::parser::{ParserExpressionTree, ParserExpressionTreeData};
 use crate::parsing::tokenizer::TokenLocation;
 
 #[derive(Debug, PartialEq)]
@@ -27,7 +27,6 @@ impl ConvertParserTreeError {
 pub enum ConvertParserTreeErrorType {
     NotSupported,
     UndefinedOperator(Operator),
-    ExpectedArgument,
     IncorrectNumberOfArgument(usize, usize),
     UndefinedVariable(String),
     UndefinedFunction(String),
@@ -45,7 +44,6 @@ impl std::fmt::Display for ConvertParserTreeErrorType {
         match self {
             ConvertParserTreeErrorType::NotSupported => { write!(f, "Not supported") }
             ConvertParserTreeErrorType::UndefinedOperator(operator) => { write!(f, "The operator '{}' is not defined", operator) }
-            ConvertParserTreeErrorType::ExpectedArgument => { write!(f, "Expected an argument") }
             ConvertParserTreeErrorType::IncorrectNumberOfArgument(expected, actual) => { write!(f, "Expected {} number of arguments but got {}", expected, actual) }
             ConvertParserTreeErrorType::UndefinedVariable(name) => { write!(f, "Variable '{}' is not defined", name) }
             ConvertParserTreeErrorType::UndefinedFunction(name) => { write!(f, "Undefined function: {}", name) }
@@ -259,6 +257,8 @@ lazy_static! {
 
 #[test]
 fn test_convert_event_query1() {
+    use crate::parsing::parser::parse_str;
+
     let tree = parse_str("avg(ind, 5) < 10 && corr(ind, dep, 5) > 0.5").unwrap();
 
     assert_eq!(
@@ -301,6 +301,8 @@ fn test_convert_event_query1() {
 
 #[test]
 fn test_convert_event_query2() {
+    use crate::parsing::parser::parse_str;
+
     let tree = parse_str("avg(abs(ind), 0.5m) < 10 && corr(ind, dep, 0.5m) > 0.5").unwrap();
 
     assert_eq!(
@@ -346,6 +348,8 @@ fn test_convert_event_query2() {
 
 #[test]
 fn test_convert_event_query3() {
+    use crate::parsing::parser::parse_str;
+
     let tree = parse_str("corr(ind, dep, 5s) > 0.5 && avg(ind, 5s) > 0.1 && avg(dep, 5s) > 0.0").unwrap();
 
     assert_eq!(
@@ -420,6 +424,8 @@ fn test_convert_event_query3() {
 
 #[test]
 fn test_convert_event_query4() {
+    use crate::parsing::parser::parse_str;
+
     let tree = parse_str("!(avg(ind, 5) < 10 && corr(ind, dep, 5) > 0.5)").unwrap();
 
     assert_eq!(

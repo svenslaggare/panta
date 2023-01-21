@@ -7,7 +7,7 @@ use std::time::Instant;
 use fnv::FnvHashMap;
 
 use crate::metrics::{MetricDefinitions, MetricValues};
-use crate::model::{EventError, EventResult, MetricId, MetricName, TimeInterval, TimePoint};
+use crate::model::{EventError, EventResult, MetricId, MetricName, TimePoint};
 
 pub trait SystemMetricCollector {
     fn new(metric_definitions: &mut MetricDefinitions) -> EventResult<Self> where Self: Sized;
@@ -412,6 +412,8 @@ pub struct DiskUsageEntry {
 
 #[test]
 fn test_system_metrics_collector1() {
+    use crate::model::TimeInterval;
+
     let mut metric_definitions = MetricDefinitions::new();
     let mut system_metrics_collector = SystemMetricsCollector::new(&mut metric_definitions).unwrap();
 
@@ -427,6 +429,8 @@ fn test_system_metrics_collector1() {
 
 #[test]
 fn test_cpu_collector1() {
+    use crate::model::TimeInterval;
+
     let mut metric_definitions = MetricDefinitions::new();
     let mut cpu_usage_collector = CpuUsageCollector::new(&mut metric_definitions).unwrap();
 
@@ -444,6 +448,8 @@ fn test_cpu_collector1() {
 
 #[test]
 fn test_memory_collector1() {
+    use crate::model::TimeInterval;
+
     let mut metric_definitions = MetricDefinitions::new();
     let mut memory_usage_collector = MemoryUsageCollector::new(&mut metric_definitions).unwrap();
 
@@ -461,6 +467,8 @@ fn test_memory_collector1() {
 
 #[test]
 fn test_disk_io_stats_collector1() {
+    use crate::model::TimeInterval;
+
     let mut metric_definitions = MetricDefinitions::new();
     let mut disk_io_stats_collector = DiskIOStatsCollector::new(&mut metric_definitions).unwrap();
 
@@ -476,6 +484,8 @@ fn test_disk_io_stats_collector1() {
 
 #[test]
 fn test_disk_usage_collector1() {
+    use crate::model::TimeInterval;
+
     let mut metric_definitions = MetricDefinitions::new();
     let mut disk_usage_collector = DiskUsageCollector::new(&mut metric_definitions).unwrap();
 

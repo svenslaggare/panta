@@ -169,7 +169,6 @@ impl Display for Value {
 pub enum EventError {
     FailedToCollectSystemMetric(std::io::Error),
     FailedToCollectRabbitMQMetric(reqwest::Error),
-    FailedToCompileMetric,
     MetricNotFound(MetricName),
     FailedToLoad(String),
     FailedToCreateFile(std::io::Error),
