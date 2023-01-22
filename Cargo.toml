@@ -2,6 +2,10 @@
 name = "panta"
 version = "0.1.0"
 edition = "2021"
+authors = ["Anton Jansson <anton_jansson@live.se>"]
+description = "panta - system analysis tool"
+license = "MIT"
+homepage = "https://github.com/svenslaggare/panta"
 
 [dependencies]
 assert_approx_eq = "1"
