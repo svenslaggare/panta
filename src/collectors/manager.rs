@@ -17,7 +17,7 @@ use crate::model::{EventResult, MetricName, TimeInterval, TimePoint};
 
 pub struct CollectorsManager {
     last_discover: Instant,
-    rediscover_every_nth: f64,
+    rediscover_rate: f64,
     system_metrics_collector: SystemMetricsCollector,
     rabbitmq_metrics_collector: Rc<RefCell<RabbitMQStatsCollector>>,
     docker_metrics_collector: Rc<RefCell<DockerStatsCollector>>,
@@ -49,7 +49,7 @@ impl CollectorsManager {
         Ok(
             CollectorsManager {
                 last_discover: Instant::now(),
-                rediscover_every_nth: config.rediscover_every_nth,
+                rediscover_rate: config.rediscover_rate,
                 system_metrics_collector,
                 rabbitmq_metrics_collector,
                 docker_metrics_collector,
@@ -116,7 +116,7 @@ impl CollectorsManager {
 
     pub async fn try_discover(&mut self, metric_definitions: &mut MetricDefinitions) -> EventResult<bool> {
         let time_now = Instant::now();
-        if (time_now - self.last_discover).as_secs_f64() >= self.rediscover_every_nth {
+        if (time_now - self.last_discover).as_secs_f64() >= 1.0 / self.rediscover_rate {
             let changed = self.discover(metric_definitions).await?;
             debug!("Discover time: {:.3} ms", (Instant::now() - time_now).as_secs_f64());
             self.last_discover = time_now;
