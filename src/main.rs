@@ -63,6 +63,10 @@ async fn main() {
         let mut values = MetricValues::new(TimeInterval::Minutes(0.5));
 
         loop {
+            if collectors_manager.try_discover(&mut metric_definitions).await.unwrap() {
+                engine.recompile_events(&metric_definitions).unwrap();
+            }
+
             let metric_time = TimePoint::now();
 
             collectors_manager.collect(

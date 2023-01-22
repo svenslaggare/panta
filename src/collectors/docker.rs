@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 use std::str::FromStr;
 
-use fnv::FnvHashMap;
+use fnv::{FnvHashMap, FnvHashSet};
 
 use bollard::container::{ListContainersOptions};
 use bollard::Docker;
 use bollard::models::ContainerSummary;
+use log::debug;
 
 use crate::collectors::system::{CpuUsageCollector, MemoryUsageCollector};
 use crate::metrics::{MetricDefinitions, MetricValues};
@@ -25,26 +26,50 @@ impl DockerStatsCollector {
             container_stats: FnvHashMap::default()
         };
 
-        for container in DockerStatsCollector::get_containers(&collector.docker).await? {
-            if let Some(id) = container.id.as_ref() {
-                let name = container.names.as_ref().map(|names| names.get(0)).flatten().unwrap_or(id);
-                let name = name.replace("/", "");
+        collector.discover(metric_definitions).await?;
 
-                collector.container_stats.insert(
-                    name.clone(),
-                    DockerStatsEntry {
-                        id: id.clone(),
-                        stats: DockerStatsCollector::get_container_docker_stats(id)?,
-                        cpu_usage_metric: metric_definitions.define(MetricName::sub("docker.container.cpu_usage", &name)),
-                        used_memory_bytes_metric: metric_definitions.define(MetricName::sub("docker.container.used_memory_bytes", &name)),
-                        used_memory_ratio_metric: metric_definitions.define(MetricName::sub("docker.container.used_memory_ratio", &name)),
-                        total_memory_bytes_metric: metric_definitions.define(MetricName::sub("docker.container.total_memory_bytes", &name))
-                    }
-                );
+        Ok(collector)
+    }
+
+    pub async fn discover(&mut self, metric_definitions: &mut MetricDefinitions) -> EventResult<bool> {
+        let mut found = FnvHashSet::default();
+        let mut added = false;
+        for container in DockerStatsCollector::get_containers(&self.docker).await? {
+            if let Some(id) = container.id.as_ref() {
+                found.insert(id.clone());
+
+                if !self.container_stats.contains_key(id) {
+                    let name = container.names.as_ref().map(|names| names.get(0)).flatten().unwrap_or(id);
+                    let name = name.replace("/", "");
+
+                    added = true;
+                    self.container_stats.insert(
+                        id.clone(),
+                        DockerStatsEntry {
+                            id: id.clone(),
+                            name: name.clone(),
+                            stats: DockerStatsCollector::get_container_docker_stats(id)?,
+                            cpu_usage_metric: metric_definitions.define(MetricName::sub("docker.container.cpu_usage", &name)),
+                            used_memory_bytes_metric: metric_definitions.define(MetricName::sub("docker.container.used_memory_bytes", &name)),
+                            used_memory_ratio_metric: metric_definitions.define(MetricName::sub("docker.container.used_memory_ratio", &name)),
+                            total_memory_bytes_metric: metric_definitions.define(MetricName::sub("docker.container.total_memory_bytes", &name))
+                        }
+                    );
+                }
             }
         }
 
-        Ok(collector)
+        let all = FnvHashSet::from_iter(self.container_stats.keys().cloned());
+        for old in all.difference(&found) {
+            self.container_stats.remove(old);
+        }
+
+        debug!("Containers:");
+        for container in &self.container_stats {
+            debug!("\t{}", container.1.name);
+        }
+
+        Ok(added)
     }
 
     pub async fn collect(&mut self, time: TimePoint, metrics: &mut MetricValues) -> EventResult<()> {
@@ -131,6 +156,7 @@ impl DockerStatsCollector {
 
 struct DockerStatsEntry {
     id: String,
+    name: String,
     stats: DockerStats,
     cpu_usage_metric: MetricId,
     used_memory_bytes_metric: MetricId,

@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
-use log::error;
+use std::time::Instant;
+use log::{debug, error};
 
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -15,6 +16,7 @@ use crate::metrics::{MetricDefinitions, MetricValues};
 use crate::model::{EventResult, MetricName, TimeInterval, TimePoint};
 
 pub struct CollectorsManager {
+    last_discover: Instant,
     system_metrics_collector: SystemMetricsCollector,
     rabbitmq_metrics_collector: Rc<RefCell<RabbitMQStatsCollector>>,
     docker_metrics_collector: Rc<RefCell<DockerStatsCollector>>,
@@ -45,6 +47,7 @@ impl CollectorsManager {
 
         Ok(
             CollectorsManager {
+                last_discover: Instant::now(),
                 system_metrics_collector,
                 rabbitmq_metrics_collector,
                 docker_metrics_collector,
@@ -107,5 +110,23 @@ impl CollectorsManager {
         }
 
         Ok(())
+    }
+
+    pub async fn try_discover(&mut self, metric_definitions: &mut MetricDefinitions) -> EventResult<bool> {
+        let time_now = Instant::now();
+        if (time_now - self.last_discover).as_secs_f64() >= 10.0 {
+            let changed = self.discover(metric_definitions).await?;
+            debug!("Discover time: {:.3} ms", (Instant::now() - time_now).as_secs_f64());
+            self.last_discover = time_now;
+            Ok(changed)
+        } else {
+            Ok(false)
+        }
+    }
+
+    async fn discover(&mut self, metric_definitions: &mut MetricDefinitions) -> EventResult<bool> {
+        let mut changed = false;
+        changed |= self.docker_metrics_collector.borrow_mut().discover(metric_definitions).await?;
+        Ok(changed)
     }
 }
