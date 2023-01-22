@@ -28,10 +28,10 @@ On every metric sampling, every query is evaluated. But _only_ events that are t
 
 ## Aggregates
 Rather than just looking at the latest metric values, it is more interesting to look at _aggregates_ of the metric over time. In panta, the following aggregates are supported:
-* Average `avg`
-* Variance / standard deviation `var/std`
-* Covariance (two variables) `cov`
-* Correlation coefficient `corr`
+* Average: `avg`
+* Variance / standard deviation: `var/std`
+* Covariance (two variables): `cov`
+* Correlation coefficient: `corr`
 
 The reasoning behind choosing these are that they can easily be implemented in an incremental fashion. The aggregates are also _over_ time, i.e. last the average value of the last 5 seconds.
 
