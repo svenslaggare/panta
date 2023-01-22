@@ -67,6 +67,6 @@ The query `avg(ind, 5s) > 0.1 && corr(ind, dep, 5s) > 0.5` means:
 If the average value of independent variable in the last 5 seconds is greater than 0.1 and the correlation between the independent and dependent is greater than 0.5, then an event is created.
 
 ## Building
-* Requires [Rust](https://rustup.rs/).
+* Requires [cargo](https://rustup.rs/).
 * `cargo build --release` - output in `target/release`.
 * `cargo deb` - builds a debian package in `target/debian`.
