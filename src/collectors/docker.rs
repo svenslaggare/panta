@@ -5,6 +5,7 @@ use fnv::FnvHashMap;
 
 use bollard::container::{ListContainersOptions};
 use bollard::Docker;
+use bollard::models::ContainerSummary;
 
 use crate::collectors::system::{CpuUsageCollector, MemoryUsageCollector};
 use crate::metrics::{MetricDefinitions, MetricValues};
@@ -24,20 +25,7 @@ impl DockerStatsCollector {
             container_stats: FnvHashMap::default()
         };
 
-        let mut filters = HashMap::new();
-        filters.insert(String::from("status"), vec![String::from("running")]);
-        let containers = &collector.docker
-            .list_containers(
-                Some(
-                    ListContainersOptions {
-                        all: true,
-                        filters,
-                        ..Default::default()
-                    }
-                ))
-            .await?;
-
-        for container in containers {
+        for container in DockerStatsCollector::get_containers(&collector.docker).await? {
             if let Some(id) = container.id.as_ref() {
                 let name = container.names.as_ref().map(|names| names.get(0)).flatten().unwrap_or(id);
                 let name = name.replace("/", "");
@@ -122,6 +110,22 @@ impl DockerStatsCollector {
                 total_memory_bytes
             }
         )
+    }
+
+    async fn get_containers(docker: &Docker) -> EventResult<Vec<ContainerSummary>> {
+        let mut filters = HashMap::new();
+        filters.insert(String::from("status"), vec![String::from("running")]);
+        let containers = docker
+            .list_containers(
+                Some(
+                    ListContainersOptions {
+                        all: true,
+                        filters,
+                        ..Default::default()
+                    }
+                ))
+            .await?;
+        Ok(containers)
     }
 }
 
