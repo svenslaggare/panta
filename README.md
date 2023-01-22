@@ -22,7 +22,7 @@ See `data/events.yaml` for a full example.
 ## Events
 Everything is built around _events_ that fires when an expression evaluates true. To be able to easily define many queries, an event consists of two type of metrics: independent metric (the metric we want to discover performance problem for) and the dependent metrics (the possible variables that the independent metric correlates with). 
 
-In each event, the independent metric is matched with _all_ of the dependent metric. This makes the event definition generic, allowing easy definition of many underlying queries being executed.
+In each event, the independent metric is matched with _all_ of the dependent metrics, but a specific instance of the query only refers to one. This makes the event definition generic, making it easy to define many underlying queries.
 
 On every metric sampling, every query is evaluated. But _only_ events that are true generates output. This strategy is necessary in order to discover performance problems that are short-lived, but also don't create a lot of output that is costly to store.
 
