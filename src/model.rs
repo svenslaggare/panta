@@ -3,7 +3,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use serde::de::{Error, Visitor};
-use serde::{Serialize, Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer};
 
 use crate::event::Event;
 use crate::event_output::EventOutputDefinition;
@@ -30,7 +30,7 @@ pub struct ValueId(pub u64);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct MetricId(pub u64);
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct MetricName {
     pub name: String,
     pub sub: Option<String>
@@ -110,7 +110,7 @@ impl<'de> Deserialize<'de> for MetricName {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 pub enum TimeInterval {
     Seconds(f64),
     Minutes(f64)
