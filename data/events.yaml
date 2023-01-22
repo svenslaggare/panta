@@ -8,7 +8,7 @@ events:
       - "system.disk.write_bytes.rate:sda2"
       - "system.net.received_bytes.rate"
       - "system.net.sent_bytes.rate"
-      - "rabbitmq.publish_rate"
+      - "rabbitmq.publish.rate"
     query: "avg(ind, 5s) > 0.1 && corr(ind, dep, 5s) > 0.5"
     outputs:
       - - IndependentMetricName

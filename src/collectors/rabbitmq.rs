@@ -46,23 +46,23 @@ impl RabbitMQStatsCollector {
                     QueueEntry {
                         name: queue.name.clone(),
 
-                        message_ready_count_metric: metric_definitions.define(MetricName::sub("rabbitmq.message_ready_count", &queue.name)),
-                        message_ready_rate_metric: metric_definitions.define(MetricName::sub("rabbitmq.message_ready_rate", &queue.name)),
+                        message_ready_count_metric: metric_definitions.define(MetricName::sub("rabbitmq.message_ready.count", &queue.name)),
+                        message_ready_rate_metric: metric_definitions.define(MetricName::sub("rabbitmq.message_ready.rate", &queue.name)),
 
-                        publish_count_metric: metric_definitions.define(MetricName::sub("rabbitmq.publish_count", &queue.name)),
-                        publish_rate_metric: metric_definitions.define(MetricName::sub("rabbitmq.publish_rate", &queue.name)),
+                        publish_count_metric: metric_definitions.define(MetricName::sub("rabbitmq.publish.count", &queue.name)),
+                        publish_rate_metric: metric_definitions.define(MetricName::sub("rabbitmq.publish.rate", &queue.name)),
 
-                        ack_count_metric: metric_definitions.define(MetricName::sub("rabbitmq.ack_count", &queue.name)),
-                        ack_rate_metric: metric_definitions.define(MetricName::sub("rabbitmq.ack_rate", &queue.name)),
+                        ack_count_metric: metric_definitions.define(MetricName::sub("rabbitmq.ack.count", &queue.name)),
+                        ack_rate_metric: metric_definitions.define(MetricName::sub("rabbitmq.ack.rate", &queue.name)),
 
-                        deliver_count_metric: metric_definitions.define(MetricName::sub("rabbitmq.deliver_count", &queue.name)),
-                        deliver_rate_metric: metric_definitions.define(MetricName::sub("rabbitmq.deliver_rate", &queue.name)),
+                        deliver_count_metric: metric_definitions.define(MetricName::sub("rabbitmq.deliver.count", &queue.name)),
+                        deliver_rate_metric: metric_definitions.define(MetricName::sub("rabbitmq.deliver.rate", &queue.name)),
 
-                        redeliver_count_metric: metric_definitions.define(MetricName::sub("rabbitmq.redeliver_count", &queue.name)),
-                        redeliver_rate_metric: metric_definitions.define(MetricName::sub("rabbitmq.redeliver_rate", &queue.name)),
+                        redeliver_count_metric: metric_definitions.define(MetricName::sub("rabbitmq.redeliver.count", &queue.name)),
+                        redeliver_rate_metric: metric_definitions.define(MetricName::sub("rabbitmq.redeliver.rate", &queue.name)),
 
-                        unacknowledged_count_metric: metric_definitions.define(MetricName::sub("rabbitmq.unacknowledged_count", &queue.name)),
-                        unacknowledged_rate_metric: metric_definitions.define(MetricName::sub("rabbitmq.unacknowledged_rate", &queue.name)),
+                        unacknowledged_count_metric: metric_definitions.define(MetricName::sub("rabbitmq.unacknowledged.count", &queue.name)),
+                        unacknowledged_rate_metric: metric_definitions.define(MetricName::sub("rabbitmq.unacknowledged.rate", &queue.name)),
 
                         consumer_utilisation_metric: metric_definitions.define(MetricName::sub("rabbitmq.consumer_utilisation", &queue.name))
                     }
