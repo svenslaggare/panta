@@ -4,7 +4,7 @@ A tool for analyzing the performance of a Linux system (i.e. one server) by exec
 The best way to think about Panta is it is like a time series database but without any data being stored.
 
 ## Usage
-Set `data/events.yaml` for a full example.
+See `data/events.yaml` for a full example.
 
 ## Metrics collectors
 * System
