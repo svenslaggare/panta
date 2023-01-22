@@ -39,7 +39,7 @@ The reasoning behind choosing these are that they can easily be implemented in a
 A metric is a named floating point value that is collected by collectors at every sampling point. A metric can be divided into sub metrics.
 A sub metric is defined as `metric:sub`.
 
-If a metric is divided into sub metrics, then referring to the metric itself will just expand to all sub metrics in queries.
+If a metric is divided into sub metrics, then referring to the metric itself will just expand to all sub metrics when executing in queries.
 
 ## Querying language
 The queries are defined using "standard" infix notation.
