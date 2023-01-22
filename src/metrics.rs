@@ -85,6 +85,8 @@ impl MetricDefinitions {
     }
 
     pub fn print(&self) {
+        println!("Defined metrics:");
+
         let mut num_metrics = 0;
         let mut total_num_metric = 0;
         for (metric, sub_metrics) in &self.metrics {

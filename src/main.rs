@@ -49,7 +49,9 @@ async fn main() {
             &mut metric_definitions
         ).await.unwrap();
 
-        metric_definitions.print();
+        if command_line_config.show_metrics {
+            metric_definitions.print();
+        }
 
         for event in events_def.events {
             engine.add_event(&metric_definitions, event).unwrap();
@@ -122,5 +124,8 @@ struct CommandLineConfig {
     events_file: PathBuf,
     /// The config file
     #[structopt(long="config")]
-    config_file: Option<PathBuf>
+    config_file: Option<PathBuf>,
+    /// Shows the defined metrics
+    #[structopt(long)]
+    show_metrics: bool
 }
