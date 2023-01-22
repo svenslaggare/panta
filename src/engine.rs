@@ -93,6 +93,8 @@ impl EventEngine {
                         dependent_metric: dependent_metric_id,
                         query,
                         outputs,
+                        output_rate: event.output_rate,
+                        last_event_time: None
                     }
                 );
 
@@ -333,17 +335,21 @@ impl EventEngine {
 
         self.aggregators.handle_values(time, &values);
 
-        for event in self.compiled_events.iter() {
+        for event_index in 0..self.compiled_events.len() {
+            let event = &self.compiled_events[event_index];
             let query = &event.query;
             // println!("Event #{}.{}: {}", event.id, event.sub_id, self.query_to_string(&values, query).unwrap_or("N/A".to_owned()));
             if let Some(accept) = self.evaluate_query(&values, query).map(|value| value.bool()).flatten() {
                 if accept {
-                    on_event(
-                        event.id,
-                        event.sub_id,
-                        &event.name,
-                        self.evaluate_outputs(metric_definitions, &event, &values).collect()
-                    );
+                    if event.should_generate_event(time) {
+                        on_event(
+                            event.id,
+                            event.sub_id,
+                            &event.name,
+                            self.evaluate_outputs(metric_definitions, &event, &values).collect()
+                        );
+                        self.compiled_events[event_index].last_event_time = Some(time);
+                    }
                 }
             }
         }
@@ -493,7 +499,20 @@ struct CompiledEvent {
     independent_metric: MetricId,
     dependent_metric: MetricId,
     query: CompiledEventQuery,
-    outputs: Vec<(EventOutputName, CompiledEventExpression)>
+    outputs: Vec<(EventOutputName, CompiledEventExpression)>,
+    output_rate: Option<f64>,
+    last_event_time: Option<TimePoint>
+}
+
+impl CompiledEvent {
+    pub fn should_generate_event(&self, time: TimePoint) -> bool {
+        match (self.output_rate, self.last_event_time) {
+            (Some(output_rate), Some(last_event_time)) => {
+                (time - last_event_time).as_secs_f64() > 1.0 / output_rate
+            }
+            _ => true
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -700,7 +719,8 @@ fn test_event_engine1() {
                         interval: TimeInterval::Seconds(10.0)
                     }
                 )
-            ]
+            ],
+            output_rate: None
         }
     ).unwrap();
     engine.recompile_events(&metric_definitions).unwrap();
@@ -825,7 +845,8 @@ fn test_event_engine2() {
                         interval: TimeInterval::Seconds(10.0)
                     }
                 )
-            ]
+            ],
+            output_rate: None
         }
     ).unwrap();
 

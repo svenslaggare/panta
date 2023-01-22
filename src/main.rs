@@ -19,7 +19,6 @@ use tokio::task;
 
 use crate::collectors::manager::CollectorsManager;
 use crate::config::Config;
-
 use crate::engine::EventEngine;
 use crate::event_output::{EventOutputHandlers};
 use crate::metrics::{MetricDefinitions, MetricValues};

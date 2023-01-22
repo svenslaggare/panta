@@ -38,7 +38,7 @@ impl CustomMetricsCollector {
             if let Ok(str_data) = std::str::from_utf8(data) {
                 match CustomMetric::from_str(str_data) {
                     Ok(custom_metric) => {
-                        debug!("Read custom metric: {:?}", custom_metric);
+                        debug!("Received custom metric: {:?}", custom_metric);
                         if self.result_sender.send(custom_metric).is_err() {
                             break;
                         }

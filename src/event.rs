@@ -21,7 +21,8 @@ pub struct Event {
     pub independent_metric: MetricName,
     pub dependent_metric: Vec<MetricName>,
     pub query: EventQuery,
-    pub outputs: Vec<(EventOutputName, EventExpression)>
+    pub outputs: Vec<(EventOutputName, EventExpression)>,
+    pub output_rate: Option<f64>
 }
 
 #[derive(Debug, PartialEq)]
