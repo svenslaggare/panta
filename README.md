@@ -3,6 +3,9 @@ A tool for analyzing the performance of a Linux system (i.e. one server) by exec
 
 The best way to think about Panta is it is like a time series database but without any data being stored.
 
+## Usage
+Set `data/events.yaml` for a full example.
+
 ## Metrics collectors
 * System
   * CPU
@@ -57,6 +60,11 @@ The following functions exist:
 * `square`
 * `exp`
 * `ln`
+
+### Example
+The query `avg(ind, 5s) > 0.1 && corr(ind, dep, 5s) > 0.5` means:
+
+If the average value of independent variable in the last 5 seconds is greater than 0.1 and the correlation between the independent and dependent is greater than 0.5, then an event is created.
 
 ## Building
 * Requires [Rust](https://rustup.rs/).
