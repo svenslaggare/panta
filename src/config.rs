@@ -8,7 +8,8 @@ use crate::model::{EventError, EventResult};
 pub struct Config {
     pub log_level: log::LevelFilter,
     pub custom_metrics: CustomMetricsConfig,
-    pub rabbitmq_metrics: RabbitMQMetricsConfig
+    pub rabbitmq_metrics: RabbitMQMetricsConfig,
+    pub rediscover_every_nth: f64
 }
 
 impl Config {
@@ -23,7 +24,8 @@ impl Default for Config {
         Config {
             log_level: log::LevelFilter::Info,
             custom_metrics: CustomMetricsConfig::default(),
-            rabbitmq_metrics: RabbitMQMetricsConfig::default()
+            rabbitmq_metrics: RabbitMQMetricsConfig::default(),
+            rediscover_every_nth: 10.0
         }
     }
 }

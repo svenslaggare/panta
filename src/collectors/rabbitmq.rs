@@ -1,4 +1,5 @@
-use fnv::FnvHashMap;
+use fnv::{FnvHashMap, FnvHashSet};
+use log::debug;
 use serde::Deserialize;
 
 use crate::config::RabbitMQMetricsConfig;
@@ -26,41 +27,60 @@ impl RabbitMQStatsCollector {
             queues: FnvHashMap::default()
         };
 
-        let queues = collector.get_queues().await.map_err(|err| EventError::FailedToCollectRabbitMQMetric(err))?;
-        collector.queues = FnvHashMap::from_iter(
-            queues
-                .into_iter()
-                .map(|queue|
-                    (
-                        queue.name.clone(),
-                        QueueEntry {
-                            name: queue.name.clone(),
-
-                            message_ready_count_metric: metric_definitions.define(MetricName::sub("rabbitmq.message_ready_count", &queue.name)),
-                            message_ready_rate_metric: metric_definitions.define(MetricName::sub("rabbitmq.message_ready_rate", &queue.name)),
-
-                            publish_count_metric: metric_definitions.define(MetricName::sub("rabbitmq.publish_count", &queue.name)),
-                            publish_rate_metric: metric_definitions.define(MetricName::sub("rabbitmq.publish_rate", &queue.name)),
-
-                            ack_count_metric: metric_definitions.define(MetricName::sub("rabbitmq.ack_count", &queue.name)),
-                            ack_rate_metric: metric_definitions.define(MetricName::sub("rabbitmq.ack_rate", &queue.name)),
-
-                            deliver_count_metric: metric_definitions.define(MetricName::sub("rabbitmq.deliver_count", &queue.name)),
-                            deliver_rate_metric: metric_definitions.define(MetricName::sub("rabbitmq.deliver_rate", &queue.name)),
-
-                            redeliver_count_metric: metric_definitions.define(MetricName::sub("rabbitmq.redeliver_count", &queue.name)),
-                            redeliver_rate_metric: metric_definitions.define(MetricName::sub("rabbitmq.redeliver_rate", &queue.name)),
-
-                            unacknowledged_count_metric: metric_definitions.define(MetricName::sub("rabbitmq.unacknowledged_count", &queue.name)),
-                            unacknowledged_rate_metric: metric_definitions.define(MetricName::sub("rabbitmq.unacknowledged_rate", &queue.name)),
-
-                            consumer_utilisation_metric: metric_definitions.define(MetricName::sub("rabbitmq.consumer_utilisation", &queue.name))
-                        }
-                    )
-                )
-        );
+        collector.discover(metric_definitions).await?;
 
         Ok(collector)
+    }
+
+    pub async fn discover(&mut self, metric_definitions: &mut MetricDefinitions) -> EventResult<bool> {
+        let mut added = false;
+        let mut found = FnvHashSet::default();
+
+        for queue in self.get_queues().await.map_err(|err| EventError::FailedToCollectRabbitMQMetric(err))? {
+            found.insert(queue.name.clone());
+
+            if !self.queues.contains_key(&queue.name) {
+                added = true;
+                self.queues.insert(
+                    queue.name.clone(),
+                    QueueEntry {
+                        name: queue.name.clone(),
+
+                        message_ready_count_metric: metric_definitions.define(MetricName::sub("rabbitmq.message_ready_count", &queue.name)),
+                        message_ready_rate_metric: metric_definitions.define(MetricName::sub("rabbitmq.message_ready_rate", &queue.name)),
+
+                        publish_count_metric: metric_definitions.define(MetricName::sub("rabbitmq.publish_count", &queue.name)),
+                        publish_rate_metric: metric_definitions.define(MetricName::sub("rabbitmq.publish_rate", &queue.name)),
+
+                        ack_count_metric: metric_definitions.define(MetricName::sub("rabbitmq.ack_count", &queue.name)),
+                        ack_rate_metric: metric_definitions.define(MetricName::sub("rabbitmq.ack_rate", &queue.name)),
+
+                        deliver_count_metric: metric_definitions.define(MetricName::sub("rabbitmq.deliver_count", &queue.name)),
+                        deliver_rate_metric: metric_definitions.define(MetricName::sub("rabbitmq.deliver_rate", &queue.name)),
+
+                        redeliver_count_metric: metric_definitions.define(MetricName::sub("rabbitmq.redeliver_count", &queue.name)),
+                        redeliver_rate_metric: metric_definitions.define(MetricName::sub("rabbitmq.redeliver_rate", &queue.name)),
+
+                        unacknowledged_count_metric: metric_definitions.define(MetricName::sub("rabbitmq.unacknowledged_count", &queue.name)),
+                        unacknowledged_rate_metric: metric_definitions.define(MetricName::sub("rabbitmq.unacknowledged_rate", &queue.name)),
+
+                        consumer_utilisation_metric: metric_definitions.define(MetricName::sub("rabbitmq.consumer_utilisation", &queue.name))
+                    }
+                );
+            }
+        }
+
+        let all = FnvHashSet::from_iter(self.queues.keys().cloned());
+        for old in all.difference(&found) {
+            self.queues.remove(old);
+        }
+
+        debug!("Queues:");
+        for queue in &self.queues {
+            debug!("\t{}", queue.1.name);
+        }
+
+        Ok(added)
     }
 
     pub async fn collect(&mut self, time: TimePoint, metrics: &mut MetricValues) -> EventResult<()> {
@@ -87,7 +107,7 @@ impl RabbitMQStatsCollector {
                 metrics.insert(time, queue_entry.unacknowledged_count_metric, queue_info.messages_unacknowledged.unwrap_or(0) as f64);
                 metrics.insert(time, queue_entry.unacknowledged_rate_metric, queue_info.messages_unacknowledged_details.map(|d| d.rate).unwrap_or(0.0));
 
-                metrics.insert(time, queue_entry.consumer_utilisation_metric, queue_info.consumer_utilisation);
+                metrics.insert(time, queue_entry.consumer_utilisation_metric, queue_info.consumer_utilisation.unwrap_or(0.0));
             }
         }
 
@@ -149,7 +169,7 @@ struct RabbitMQQueueInfo {
     messages_unacknowledged: Option<u64>,
     messages_unacknowledged_details: Option<RabbitMQDetails>,
     message_stats: Option<RabbitMQMessageStats>,
-    consumer_utilisation: f64
+    consumer_utilisation: Option<f64>
 }
 
 #[derive(Debug, Deserialize)]

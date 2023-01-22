@@ -34,10 +34,10 @@ impl DockerStatsCollector {
     pub async fn discover(&mut self, metric_definitions: &mut MetricDefinitions) -> EventResult<bool> {
         let mut found = FnvHashSet::default();
         let mut added = false;
+
         for container in DockerStatsCollector::get_containers(&self.docker).await? {
             if let Some(id) = container.id.as_ref() {
                 found.insert(id.clone());
-
                 if !self.container_stats.contains_key(id) {
                     let name = container.names.as_ref().map(|names| names.get(0)).flatten().unwrap_or(id);
                     let name = name.replace("/", "");

@@ -108,7 +108,8 @@ fn setup_logger(config: &Config) -> Result<(), fern::InitError> {
                 message
             ))
         })
-        .level(config.log_level)
+        .level(log::LevelFilter::Info)
+        .level_for("panta", config.log_level)
         .chain(std::io::stdout())
         .apply()?;
     Ok(())
