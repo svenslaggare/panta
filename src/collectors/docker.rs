@@ -1,26 +1,27 @@
 use std::collections::HashMap;
+use std::str::FromStr;
 
 use fnv::FnvHashMap;
 
-use futures_util::future::join_all;
-use futures_util::stream::StreamExt;
-
-use bollard::container::ListContainersOptions;
+use bollard::container::{ListContainersOptions};
 use bollard::Docker;
 
+use crate::collectors::system::{CpuUsageCollector, MemoryUsageCollector};
 use crate::metrics::{MetricDefinitions, MetricValues};
-use crate::model::{EventResult, MetricId, MetricName, TimePoint};
+use crate::model::{EventError, EventResult, MetricId, MetricName, TimePoint};
 
 pub struct DockerStatsCollector {
     docker: Docker,
-    prev_stats: FnvHashMap<String, DockerStatsEntry>
+    system_stats: DockerStats,
+    container_stats: FnvHashMap<String, DockerStatsEntry>
 }
 
 impl DockerStatsCollector {
     pub async fn new(metric_definitions: &mut MetricDefinitions) -> EventResult<DockerStatsCollector> {
         let mut collector = DockerStatsCollector {
             docker: Docker::connect_with_socket_defaults()?,
-            prev_stats: FnvHashMap::default()
+            system_stats: DockerStatsCollector::get_system_stats()?,
+            container_stats: FnvHashMap::default()
         };
 
         let mut filters = HashMap::new();
@@ -41,10 +42,11 @@ impl DockerStatsCollector {
                 let name = container.names.as_ref().map(|names| names.get(0)).flatten().unwrap_or(id);
                 let name = name.replace("/", "");
 
-                collector.prev_stats.insert(
+                collector.container_stats.insert(
                     name.clone(),
                     DockerStatsEntry {
-                        stats: collector.get_container_docker_stats(id).await.unwrap(),
+                        id: id.clone(),
+                        stats: DockerStatsCollector::get_container_docker_stats(id)?,
                         cpu_usage_metric: metric_definitions.define(MetricName::sub("docker.container.cpu_usage", &name)),
                         used_memory_bytes_metric: metric_definitions.define(MetricName::sub("docker.container.used_memory_bytes", &name)),
                         used_memory_ratio_metric: metric_definitions.define(MetricName::sub("docker.container.used_memory_ratio", &name)),
@@ -60,19 +62,17 @@ impl DockerStatsCollector {
     pub async fn collect(&mut self, time: TimePoint, metrics: &mut MetricValues) -> EventResult<()> {
         let memory_scale = 1.0 / (1024.0 * 1024.0);
 
-        let docker_stats_futures = self.prev_stats.keys().map(|name| self.get_container_docker_stats(name));
-        let docker_stats = join_all(docker_stats_futures).await;
-
-        for (entry, new_stats) in self.prev_stats.values_mut().zip(docker_stats) {
-            if let Some(new_stats) = new_stats {
+        let new_system_stats = DockerStatsCollector::get_system_stats()?;
+        for entry in self.container_stats.values_mut() {
+            if let Ok(new_stats) = DockerStatsCollector::get_container_docker_stats(&entry.id) {
                 let prev_stats = &mut entry.stats;
 
-                let diff_usage = new_stats.cpu_stats.cpu_usage.total_usage - prev_stats.cpu_stats.cpu_usage.total_usage;
-                let diff_system = new_stats.cpu_stats.system_cpu_usage.unwrap_or(0) - prev_stats.cpu_stats.system_cpu_usage.unwrap_or(0);
+                let diff_usage = new_stats.total_cpu_usage - prev_stats.total_cpu_usage;
+                let diff_system = new_system_stats.total_cpu_usage - self.system_stats.total_cpu_usage;
                 let cpu_usage = diff_usage as f64 / diff_system as f64;
 
-                let used_memory = new_stats.memory_stats.usage.unwrap_or(0);
-                let total_memory = new_stats.memory_stats.limit.unwrap_or(0);
+                let used_memory = new_stats.used_memory_bytes;
+                let total_memory = new_stats.total_memory_bytes.or(new_system_stats.total_memory_bytes).unwrap_or(0);
 
                 metrics.insert(time, entry.cpu_usage_metric, cpu_usage);
                 metrics.insert(time, entry.used_memory_bytes_metric, used_memory as f64 * memory_scale);
@@ -82,27 +82,62 @@ impl DockerStatsCollector {
                 *prev_stats = new_stats;
             }
         }
+        self.system_stats = new_system_stats;
 
         Ok(())
     }
 
-    async fn get_container_docker_stats(&self, id: &str) -> Option<bollard::container::Stats> {
-        let mut stream = self.docker.stats(id, None).take(1);
+    fn get_system_stats() -> EventResult<DockerStats> {
+        let (_, (cpu_usage, _)) = CpuUsageCollector::get_cpu_values(&CpuUsageCollector::get_cpu_content()?).next().unwrap();
+        let memory_usage = MemoryUsageCollector::get_memory_usage()?;
 
-        while let Some(Ok(stats)) = stream.next().await {
-            return Some(stats);
-        }
+        Ok(
+            DockerStats {
+                total_cpu_usage: cpu_usage * (1_000_000_000 / 100), // convert to nanoseconds
+                used_memory_bytes: 0,
+                total_memory_bytes: Some((memory_usage.total_memory * (1024.0 * 1024.0)) as i64)
+            }
+        )
+    }
 
-        None
+    fn get_container_docker_stats(id: &str) -> EventResult<DockerStats> {
+        let read_to_string = |path: String| {
+            std::fs::read_to_string(path).map_err(|err| EventError::FailedToCollectDockerMetric(err.to_string()))
+        };
+
+        let content = read_to_string(format!("/sys/fs/cgroup/cpu/docker/{}/cpuacct.usage", id))?;
+        let total_cpu_usage = i64::from_str(content.trim_end()).map_err(|err| EventError::FailedToCollectDockerMetric(err.to_string()))?;
+
+        let content = read_to_string(format!("/sys/fs/cgroup/memory/docker/{}/memory.usage_in_bytes", id))?;
+        let used_memory_bytes = i64::from_str(content.trim_end()).map_err(|err| EventError::FailedToCollectDockerMetric(err.to_string()))?;
+
+        let content = read_to_string(format!("/sys/fs/cgroup/memory/docker/{}/memory.limit_in_bytes", id))?;
+        let total_memory_bytes = i64::from_str(content.trim_end()).map_err(|err| EventError::FailedToCollectDockerMetric(err.to_string()))?;
+        let total_memory_bytes = if total_memory_bytes < (i64::MAX / 4096) * 4096 {Some(total_memory_bytes)} else {None};
+
+        Ok(
+            DockerStats {
+                total_cpu_usage,
+                used_memory_bytes,
+                total_memory_bytes
+            }
+        )
     }
 }
 
 struct DockerStatsEntry {
-    stats: bollard::container::Stats,
+    id: String,
+    stats: DockerStats,
     cpu_usage_metric: MetricId,
     used_memory_bytes_metric: MetricId,
     used_memory_ratio_metric: MetricId,
     total_memory_bytes_metric: MetricId,
+}
+
+struct DockerStats {
+    total_cpu_usage: i64,
+    used_memory_bytes: i64,
+    total_memory_bytes: Option<i64>
 }
 
 #[tokio::test(flavor="multi_thread", worker_threads=1)]

@@ -70,11 +70,11 @@ impl CollectorsManager {
         let docker_metrics_collector_clone = self.docker_metrics_collector.clone();
         let docker_result = task::spawn_local(async move {
             let mut docker_values = MetricValues::new(TimeInterval::Seconds(0.0));
-            let rabbitmq_result = docker_metrics_collector_clone.borrow_mut().collect(
+            let docker_result = docker_metrics_collector_clone.borrow_mut().collect(
                 metric_time,
                 &mut docker_values
             ).await;
-            rabbitmq_result.map(|_| docker_values)
+            docker_result.map(|_| docker_values)
         });
 
         self.system_metrics_collector.collect(metric_time, values)?;

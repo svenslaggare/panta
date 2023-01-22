@@ -81,7 +81,7 @@ impl SystemMetricCollector for CpuUsageCollector {
 }
 
 impl CpuUsageCollector {
-    fn get_cpu_values<'a>(content: &'a str) -> impl Iterator<Item=(String, (i64, i64))> + 'a {
+    pub fn get_cpu_values<'a>(content: &'a str) -> impl Iterator<Item=(String, (i64, i64))> + 'a {
         content
             .lines()
             .map(|line| {
@@ -107,7 +107,7 @@ impl CpuUsageCollector {
             .flatten()
     }
 
-    fn get_cpu_content() -> EventResult<String> {
+    pub fn get_cpu_content() -> EventResult<String> {
         std::fs::read_to_string("/proc/stat")
             .map_err(|err| EventError::FailedToCollectSystemMetric(err))
     }
@@ -160,7 +160,7 @@ impl SystemMetricCollector for MemoryUsageCollector {
 }
 
 impl MemoryUsageCollector {
-    fn get_memory_usage() -> EventResult<MemoryUsage> {
+    pub fn get_memory_usage() -> EventResult<MemoryUsage> {
         let mut memory_usage = MemoryUsage {
             total_memory: 0.0,
             used_memory: 0.0,
@@ -187,10 +187,10 @@ impl MemoryUsageCollector {
     }
 }
 
-struct MemoryUsage {
-    total_memory: f64,
-    used_memory: f64,
-    available_memory: f64,
+pub struct MemoryUsage {
+    pub total_memory: f64,
+    pub used_memory: f64,
+    pub available_memory: f64,
 }
 
 pub struct DiskIOStatsCollector {
