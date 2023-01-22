@@ -23,6 +23,10 @@ impl EventOutputDefinition {
             EventOutputType::Console => {
                 Ok(Box::new(ConsoleEventOutputHandler::new()))
             }
+            EventOutputType::TextFile => {
+                let path = self.path.as_ref().ok_or_else(|| "Expected 'path' attribute.")?;
+                Ok(Box::new(TextFileEventOutputHandler::new(&path).map_err(|err| format!("{:?}", err))?))
+            }
             EventOutputType::JsonFile => {
                 let path = self.path.as_ref().ok_or_else(|| "Expected 'path' attribute.")?;
                 Ok(Box::new(JsonFileEventOutputHandler::new(&path).map_err(|err| format!("{:?}", err))?))
@@ -35,6 +39,8 @@ impl EventOutputDefinition {
 pub enum EventOutputType {
     #[serde(rename="console")]
     Console,
+    #[serde(rename="text_file")]
+    TextFile,
     #[serde(rename="json_file")]
     JsonFile
 }
@@ -91,8 +97,7 @@ impl ConsoleEventOutputHandler {
 
 impl EventOutputHandler for ConsoleEventOutputHandler {
     fn handle_output(&mut self, event_id: &EventId, name: &str, outputs: &Vec<(String, Value)>) -> EventResult<()> {
-        let output_string = join_event_output(outputs);
-        info!("Event generated for {} (id: {}), {}", name, event_id, output_string);
+        info!("Event generated for {} (id: {}), {}", name, event_id, join_event_output(outputs));
         Ok(())
     }
 }
@@ -113,6 +118,43 @@ pub fn join_event_output(outputs: &Vec<(String, Value)>) -> String {
     }
 
     output_string
+}
+
+pub struct TextFileEventOutputHandler {
+    file: File
+}
+
+impl TextFileEventOutputHandler {
+    pub fn new(path: &Path) -> EventResult<TextFileEventOutputHandler> {
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .map_err(|err| EventError::FailedToCreateFile(err))?;
+
+        Ok(
+            TextFileEventOutputHandler {
+                file
+            }
+        )
+    }
+}
+
+impl EventOutputHandler for TextFileEventOutputHandler {
+    fn handle_output(&mut self, event_id: &EventId, name: &str, outputs: &Vec<(String, Value)>) -> EventResult<()> {
+        let line = format!(
+            "{} Event generated for {} (id: {}), {}\n",
+            chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
+            name,
+            event_id,
+            join_event_output(outputs)
+        );
+
+        let mut line = line.into_bytes();
+        self.file.write_all(&mut line).map_err(|err| EventError::FailedToWriteFile(err))?;
+        self.file.flush().map_err(|err| EventError::FailedToWriteFile(err))?;
+        Ok(())
+    }
 }
 
 pub struct JsonFileEventOutputHandler {

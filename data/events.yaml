@@ -19,5 +19,7 @@ events:
         - "corr(ind, dep, 5s)"
 outputs:
   - type: console
+  - type: text_file
+    path: events.log
   - type: json_file
-    path: output.ndjson
+    path: events.ndjson
