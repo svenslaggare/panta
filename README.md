@@ -31,7 +31,7 @@ Rather than just looking at the latest metric values, it is more interesting to 
 * Average: `avg`
 * Variance / standard deviation: `var/std`
 * Covariance (two variables): `cov`
-* Correlation coefficient: `corr`
+* Correlation coefficient (two variables): `corr`
 
 The reasoning behind choosing these are that they can easily be implemented in an incremental fashion. The aggregates are also _over_ time, i.e. last the average value of the last 5 seconds.
 
