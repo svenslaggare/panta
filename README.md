@@ -36,9 +36,10 @@ Rather than just looking at the latest metric values, it is more interesting to 
 The reasoning behind choosing these are that they can easily be implemented in an incremental fashion. The aggregates are also _over_ time, i.e. last the average value of the last 5 seconds.
 
 ## Window aggregates
-The aggregate is applied to a window that is of interval width, rather being aggregate over of interval.
-* Min: `max`
+The aggregate is applied to a window that is of interval width, rather being the aggregate over the interval.
+* Min: `min`
 * Max: `max`
+
 ## Metrics
 A metric is a named floating point value that is collected by collectors at every sampling point. A metric can be divided into sub metrics.
 A sub metric is defined as `metric:sub`.
