@@ -171,6 +171,8 @@ pub enum EventError {
     FailedToCollectRabbitMQMetric(reqwest::Error),
     DockerError(bollard::errors::Error),
     FailedToCollectDockerMetric(String),
+    PostgresError(tokio_postgres::Error),
+    FailedToCollectPostgresMQMetric(tokio_postgres::Error),
     MetricNotFound(MetricName),
     FailedToLoad(String),
     FailedToCreateFile(std::io::Error),
@@ -182,6 +184,12 @@ pub type EventResult<T> = Result<T, EventError>;
 impl From<bollard::errors::Error> for EventError {
     fn from(err: bollard::errors::Error) -> Self {
         EventError::DockerError(err)
+    }
+}
+
+impl From<tokio_postgres::Error> for EventError {
+    fn from(err: tokio_postgres::Error) -> Self {
+        EventError::PostgresError(err)
     }
 }
 

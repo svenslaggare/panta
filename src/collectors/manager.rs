@@ -6,9 +6,11 @@ use log::{debug, error};
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::task;
+use tokio::task::JoinHandle;
 
 use crate::collectors::custom::{CustomMetric, CustomMetricsCollector};
 use crate::collectors::docker::DockerStatsCollector;
+use crate::collectors::postgres::PostgresStatsCollector;
 use crate::collectors::rabbitmq::RabbitMQStatsCollector;
 use crate::collectors::system::SystemMetricsCollector;
 use crate::config::Config;
@@ -19,8 +21,9 @@ pub struct CollectorsManager {
     last_discover: Instant,
     rediscover_rate: f64,
     system_metrics_collector: SystemMetricsCollector,
-    rabbitmq_metrics_collector: Rc<RefCell<RabbitMQStatsCollector>>,
+    rabbitmq_metrics_collector: Option<Rc<RefCell<RabbitMQStatsCollector>>>,
     docker_metrics_collector: Rc<RefCell<DockerStatsCollector>>,
+    postgres_metrics_collector: Option<Rc<RefCell<PostgresStatsCollector>>>,
     custom_metrics_receiver: UnboundedReceiver<CustomMetric>
 }
 
@@ -29,16 +32,32 @@ impl CollectorsManager {
                      metric_definitions: &mut MetricDefinitions) -> EventResult<CollectorsManager> {
         let system_metrics_collector = SystemMetricsCollector::new(metric_definitions)?;
 
-        let rabbitmq_metrics_collector = RabbitMQStatsCollector::new(
-            &config.rabbitmq_metrics,
-            metric_definitions
-        ).await?;
-        let rabbitmq_metrics_collector = Rc::new(RefCell::new(rabbitmq_metrics_collector));
+        let rabbitmq_metrics_collector = match &config.rabbitmq {
+            Some(rabbitmq) => {
+                let rabbitmq_metrics_collector = RabbitMQStatsCollector::new(
+                    rabbitmq,
+                    metric_definitions
+                ).await?;
+                Some(Rc::new(RefCell::new(rabbitmq_metrics_collector)))
+            }
+            None => None
+        };
 
         let docker_metrics_collector = DockerStatsCollector::new(
             metric_definitions
         ).await?;
         let docker_metrics_collector = Rc::new(RefCell::new(docker_metrics_collector));
+
+        let postgres_metrics_collector = match &config.postgres {
+            Some(postgres) => {
+                let postgres_metrics_collector = PostgresStatsCollector::new(
+                    postgres,
+                    metric_definitions
+                ).await?;
+                Some(Rc::new(RefCell::new(postgres_metrics_collector)))
+            }
+            None => None
+        };
 
         let (custom_metrics_sender, custom_metrics_receiver) = mpsc::unbounded_channel();
         let custom_metrics_collector = CustomMetricsCollector::new(&config.custom_metrics, custom_metrics_sender).unwrap();
@@ -53,6 +72,7 @@ impl CollectorsManager {
                 system_metrics_collector,
                 rabbitmq_metrics_collector,
                 docker_metrics_collector,
+                postgres_metrics_collector,
                 custom_metrics_receiver
             }
         )
@@ -62,15 +82,21 @@ impl CollectorsManager {
                          metric_definitions: &mut MetricDefinitions,
                          metric_time: TimePoint,
                          values: &mut MetricValues) -> EventResult<()> {
-        let rabbitmq_metrics_collector_clone = self.rabbitmq_metrics_collector.clone();
-        let rabbitmq_result = task::spawn_local(async move {
-            let mut rabbitmq_values = MetricValues::new(TimeInterval::Seconds(0.0));
-            let rabbitmq_result = rabbitmq_metrics_collector_clone.borrow_mut().collect(
-                metric_time,
-                &mut rabbitmq_values
-            ).await;
-            rabbitmq_result.map(|_| rabbitmq_values)
-        });
+        let rabbitmq_result = if let Some(rabbitmq_metrics_collector) = self.rabbitmq_metrics_collector.as_ref() {
+            let rabbitmq_metrics_collector_clone = rabbitmq_metrics_collector.clone();
+            let rabbitmq_result = task::spawn_local(async move {
+                let mut rabbitmq_values = MetricValues::new(TimeInterval::Seconds(0.0));
+                let rabbitmq_result = rabbitmq_metrics_collector_clone.borrow_mut().collect(
+                    metric_time,
+                    &mut rabbitmq_values
+                ).await;
+                rabbitmq_result.map(|_| rabbitmq_values)
+            });
+
+            Some(rabbitmq_result)
+        } else {
+            None
+        };
 
         let docker_metrics_collector_clone = self.docker_metrics_collector.clone();
         let docker_result = task::spawn_local(async move {
@@ -82,24 +108,32 @@ impl CollectorsManager {
             docker_result.map(|_| docker_values)
         });
 
+        let postgres_result = if let Some(postgres_metrics_collector) = self.postgres_metrics_collector.as_ref() {
+            let postgres_metrics_collector_clone = postgres_metrics_collector.clone();
+            let postgres_result = task::spawn_local(async move {
+                let mut postgres_values = MetricValues::new(TimeInterval::Seconds(0.0));
+                let postgres_result = postgres_metrics_collector_clone.borrow_mut().collect(
+                    metric_time,
+                    &mut postgres_values
+                ).await;
+                postgres_result.map(|_| postgres_values)
+            });
+
+            Some(postgres_result)
+        } else {
+            None
+        };
+
         self.system_metrics_collector.collect(metric_time, values)?;
 
-        match rabbitmq_result.await.unwrap() {
-            Ok(rabbitmq_values) => {
-                values.extend(rabbitmq_values);
-            }
-            Err(err) => {
-                error!("Failed to collect RabbitMQ metrics: {:?}", err);
-            }
+        if let Some(rabbitmq_result) = rabbitmq_result {
+            handle_task_result("RabbitMQ", rabbitmq_result, values).await;
         }
 
-        match docker_result.await.unwrap() {
-            Ok(docker_values) => {
-                values.extend(docker_values);
-            }
-            Err(err) => {
-                error!("Failed to collect Docker metrics: {:?}", err);
-            }
+        handle_task_result("Docker", docker_result, values).await;
+
+        if let Some(postgres_result) = postgres_result {
+            handle_task_result("Postgres", postgres_result, values).await;
         }
 
         while let Ok(custom_metric) = self.custom_metrics_receiver.try_recv() {
@@ -129,7 +163,24 @@ impl CollectorsManager {
     async fn discover(&mut self, metric_definitions: &mut MetricDefinitions) -> EventResult<bool> {
         let mut changed = false;
         changed |= self.docker_metrics_collector.borrow_mut().discover(metric_definitions).await?;
-        changed |= self.rabbitmq_metrics_collector.borrow_mut().discover(metric_definitions).await?;
+
+        if let Some(rabbitmq_metrics_collector) = self.rabbitmq_metrics_collector.as_ref() {
+            changed |= rabbitmq_metrics_collector.borrow_mut().discover(metric_definitions).await?;
+        }
+
         Ok(changed)
+    }
+}
+
+async fn handle_task_result(name: &str,
+                            task_result: JoinHandle<EventResult<MetricValues>>,
+                            values: &mut MetricValues) {
+    match task_result.await.unwrap() {
+        Ok(task_values) => {
+            values.extend(task_values);
+        }
+        Err(err) => {
+            error!("Failed to collect {} metrics: {:?}", name, err);
+        }
     }
 }

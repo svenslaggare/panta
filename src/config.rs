@@ -8,7 +8,8 @@ use crate::model::{EventError, EventResult};
 pub struct Config {
     pub log_level: log::LevelFilter,
     pub custom_metrics: CustomMetricsConfig,
-    pub rabbitmq_metrics: RabbitMQMetricsConfig,
+    pub rabbitmq: Option<RabbitMQMetricsConfig>,
+    pub postgres: Option<PostgresMetricsConfig>,
     pub rediscover_rate: f64
 }
 
@@ -24,7 +25,8 @@ impl Default for Config {
         Config {
             log_level: log::LevelFilter::Info,
             custom_metrics: CustomMetricsConfig::default(),
-            rabbitmq_metrics: RabbitMQMetricsConfig::default(),
+            rabbitmq: Some(RabbitMQMetricsConfig::default()),
+            postgres: None,
             rediscover_rate: 0.1
         }
     }
@@ -58,6 +60,34 @@ impl Default for RabbitMQMetricsConfig {
             base_url: "http://localhost:15672".to_string(),
             username: "guest".to_string(),
             password: "guest".to_string()
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct PostgresMetricsConfig {
+    pub hostname: String,
+    pub port: u16,
+    pub username: String,
+    pub password: String,
+    pub databases: Vec<String>
+}
+
+impl PostgresMetricsConfig {
+    pub fn connection_string(&self) -> String {
+        format!("host={} port={} user={} password={}", self.hostname, self.port, self.username, self.password)
+    }
+}
+
+impl Default for PostgresMetricsConfig {
+    fn default() -> Self {
+        PostgresMetricsConfig {
+            hostname: "localhost".to_string(),
+            port: 5432,
+            username: "postgres".to_string(),
+            password: "".to_string(),
+            databases: Vec::new()
         }
     }
 }
