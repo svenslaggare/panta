@@ -7,7 +7,8 @@ use crate::model::{TimeInterval, TimePoint, ValueId};
 
 pub struct AggregateOperations {
     next_aggregate_id: AggregateId,
-    aggregators: FnvHashMap<AggregateId, SumAggregator>,
+    sum_aggregators: FnvHashMap<AggregateId, SumAggregator>,
+    min_max_aggregators: FnvHashMap<AggregateId, MinMaxAggregator>,
     single_operations: FnvHashMap<SingleAggregateOperation, AggregateId>,
     dual_operations: FnvHashMap<DualAggregateOperation, AggregateId>
 }
@@ -16,7 +17,8 @@ impl AggregateOperations {
     pub fn new() -> AggregateOperations {
         AggregateOperations {
             next_aggregate_id: AggregateId(1),
-            aggregators: FnvHashMap::default(),
+            sum_aggregators: FnvHashMap::default(),
+            min_max_aggregators: FnvHashMap::default(),
             single_operations: FnvHashMap::default(),
             dual_operations: FnvHashMap::default()
         }
@@ -46,6 +48,14 @@ impl AggregateOperations {
         CorrelationAggregate(variance_left_op, variance_right_op, covariance_op)
     }
 
+    pub fn add_min(&mut self, value_id: ValueId, interval: TimeInterval) -> MinAggregate {
+        MinAggregate(self.add_single(SingleAggregateOperation::Min { value_id, interval: interval.duration() }, interval))
+    }
+
+    pub fn add_max(&mut self, value_id: ValueId, interval: TimeInterval) -> MaxAggregate {
+        MaxAggregate(self.add_single(SingleAggregateOperation::Max { value_id, interval: interval.duration() }, interval))
+    }
+
     fn add_sum(&mut self, value_id: ValueId, interval: TimeInterval) -> AggregateId {
         self.add_single(SingleAggregateOperation::Sum { value_id, interval: interval.duration() }, interval)
     }
@@ -59,7 +69,18 @@ impl AggregateOperations {
             .entry(op.clone())
             .or_insert_with(|| {
                 let aggregate_id = self.next_aggregate_id;
-                self.aggregators.insert(aggregate_id, SumAggregator::new(interval));
+                match op {
+                    SingleAggregateOperation::Sum { .. } | SingleAggregateOperation::SumSquare { .. } => {
+                        self.sum_aggregators.insert(aggregate_id, SumAggregator::new(interval));
+                    }
+                    SingleAggregateOperation::Min { .. } => {
+                        self.min_max_aggregators.insert(aggregate_id, MinMaxAggregator::new(MinMaxOperation::Min, interval));
+                    }
+                    SingleAggregateOperation::Max { .. } => {
+                        self.min_max_aggregators.insert(aggregate_id, MinMaxAggregator::new(MinMaxOperation::Max, interval));
+                    }
+                }
+
                 self.next_aggregate_id.0 += 1;
                 aggregate_id
             })
@@ -71,7 +92,7 @@ impl AggregateOperations {
             .entry(op.clone())
             .or_insert_with(|| {
                 let aggregate_id = self.next_aggregate_id;
-                self.aggregators.insert(aggregate_id, SumAggregator::new(interval));
+                self.sum_aggregators.insert(aggregate_id, SumAggregator::new(interval));
                 self.next_aggregate_id.0 += 1;
                 aggregate_id
             })
@@ -82,14 +103,24 @@ impl AggregateOperations {
                          values: &FnvHashMap<ValueId, f64>) {
         for (operation, aggregate) in &self.single_operations {
             match operation {
-                SingleAggregateOperation::Sum { value_id: metric, .. } => {
-                    if let Some(&value) = values.get(metric) {
-                        self.aggregators.get_mut(aggregate).unwrap().add(time, value);
+                SingleAggregateOperation::Sum { value_id, .. } => {
+                    if let Some(&value) = values.get(value_id) {
+                        self.sum_aggregators.get_mut(aggregate).unwrap().add(time, value);
                     }
                 }
-                SingleAggregateOperation::SumSquare { value_id: metric, .. } => {
-                    if let Some(&value) = values.get(metric) {
-                        self.aggregators.get_mut(aggregate).unwrap().add(time, value * value);
+                SingleAggregateOperation::SumSquare { value_id, .. } => {
+                    if let Some(&value) = values.get(value_id) {
+                        self.sum_aggregators.get_mut(aggregate).unwrap().add(time, value * value);
+                    }
+                }
+                SingleAggregateOperation::Min { value_id, .. } => {
+                    if let Some(&value) = values.get(value_id) {
+                        self.min_max_aggregators.get_mut(aggregate).unwrap().add(time, value);
+                    }
+                }
+                SingleAggregateOperation::Max { value_id, .. } => {
+                    if let Some(&value) = values.get(value_id) {
+                        self.min_max_aggregators.get_mut(aggregate).unwrap().add(time, value);
                     }
                 }
             }
@@ -100,7 +131,7 @@ impl AggregateOperations {
                 DualAggregateOperation::SumProduct { left, right, .. } => {
                     match (values.get(left), values.get(right)) {
                         (Some(&left_value), Some(&right_value)) => {
-                            self.aggregators.get_mut(aggregate).unwrap().add(time, left_value * right_value);
+                            self.sum_aggregators.get_mut(aggregate).unwrap().add(time, left_value * right_value);
                         }
                         _ => {}
                     }
@@ -110,13 +141,13 @@ impl AggregateOperations {
     }
 
     pub fn average(&self, aggregate: &AverageAggregate) -> Option<f64> {
-        let sum_aggregator = self.aggregators.get(&aggregate.0)?;
+        let sum_aggregator = self.sum_aggregators.get(&aggregate.0)?;
         Some(sum_aggregator.sum()? / sum_aggregator.len() as f64)
     }
 
     pub fn variance(&self, aggregate: &VarianceAggregate) -> Option<f64> {
-        let sum_aggregator = self.aggregators.get(&aggregate.0)?;
-        let sum_square_aggregator = self.aggregators.get(&aggregate.1)?;
+        let sum_aggregator = self.sum_aggregators.get(&aggregate.0)?;
+        let sum_square_aggregator = self.sum_aggregators.get(&aggregate.1)?;
 
         let sum = sum_aggregator.sum()?;
         let sum_squares = sum_square_aggregator.sum()?;
@@ -129,9 +160,9 @@ impl AggregateOperations {
     }
 
     pub fn covariance(&self, aggregate: &CovarianceAggregate) -> Option<f64> {
-        let sum_left_aggregator = self.aggregators.get(&aggregate.0)?;
-        let sum_right_aggregator = self.aggregators.get(&aggregate.1)?;
-        let sum_product_aggregator = self.aggregators.get(&aggregate.2)?;
+        let sum_left_aggregator = self.sum_aggregators.get(&aggregate.0)?;
+        let sum_right_aggregator = self.sum_aggregators.get(&aggregate.1)?;
+        let sum_product_aggregator = self.sum_aggregators.get(&aggregate.2)?;
 
         let sum_left = sum_left_aggregator.sum()?;
         let sum_right = sum_right_aggregator.sum()?;
@@ -151,6 +182,16 @@ impl AggregateOperations {
         let covariance = self.covariance(&aggregate.2)?;
         Some(covariance / std_product)
     }
+
+    pub fn min(&self, aggregate: &MinAggregate) -> Option<f64> {
+        let aggregator = self.min_max_aggregators.get(&aggregate.0)?;
+        aggregator.value()
+    }
+
+    pub fn max(&self, aggregate: &MaxAggregate) -> Option<f64> {
+        let aggregator = self.min_max_aggregators.get(&aggregate.0)?;
+        aggregator.value()
+    }
 }
 
 #[derive(Debug)]
@@ -165,13 +206,21 @@ pub struct CovarianceAggregate(AggregateId, AggregateId, AggregateId);
 #[derive(Debug)]
 pub struct CorrelationAggregate(VarianceAggregate, VarianceAggregate, CovarianceAggregate);
 
+#[derive(Debug)]
+pub struct MinAggregate(AggregateId);
+
+#[derive(Debug)]
+pub struct MaxAggregate(AggregateId);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct AggregateId(pub u64);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 enum SingleAggregateOperation {
     Sum { value_id: ValueId, interval: Duration },
-    SumSquare { value_id: ValueId, interval: Duration }
+    SumSquare { value_id: ValueId, interval: Duration },
+    Min { value_id: ValueId, interval: Duration },
+    Max { value_id: ValueId, interval: Duration }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -220,6 +269,53 @@ impl SumAggregator {
         } else {
             None
         }
+    }
+}
+
+pub enum MinMaxOperation {
+    Min,
+    Max
+}
+
+pub struct MinMaxAggregator {
+    operation: MinMaxOperation,
+    interval: Duration,
+    interval_start: Option<TimePoint>,
+    current_value: Option<f64>
+}
+
+impl MinMaxAggregator {
+    pub fn new(operation: MinMaxOperation, interval: TimeInterval) -> MinMaxAggregator {
+        MinMaxAggregator {
+            operation,
+            interval: interval.duration(),
+            interval_start: None,
+            current_value: None,
+        }
+    }
+
+    pub fn add(&mut self, time: TimePoint, value: f64) {
+        let change = if let (Some(interval_start), Some(current_value)) = (self.interval_start, self.current_value) {
+            if (time - interval_start) <= self.interval {
+                match self.operation {
+                    MinMaxOperation::Min => value < current_value,
+                    MinMaxOperation::Max => value > current_value
+                }
+            } else {
+                true
+            }
+        } else {
+            true
+        };
+
+        if change {
+            self.interval_start = Some(time);
+            self.current_value = Some(value);
+        }
+    }
+
+    pub fn value(&self) -> Option<f64> {
+        self.current_value
     }
 }
 
@@ -402,4 +498,52 @@ fn test_correlation1() {
     operations.handle_values(t0.add(Duration::from_secs_f64(4.0)), &values);
 
     assert_approx_eq!(-0.8824975, operations.correlation(&correlation_xy).unwrap());
+}
+
+#[test]
+fn test_max1() {
+    use std::ops::Add;
+
+    let mut aggregator = MinMaxAggregator::new(MinMaxOperation::Max, TimeInterval::Seconds(10.0));
+    let t0 = TimePoint::now();
+
+    aggregator.add(t0, 2.0);
+    assert_eq!(Some(2.0), aggregator.value());
+
+    aggregator.add(t0.add(Duration::from_secs_f64(2.0)), 4.0);
+    assert_eq!(Some(4.0), aggregator.value());
+
+    aggregator.add(t0.add(Duration::from_secs_f64(3.0)), 3.0);
+    assert_eq!(Some(4.0), aggregator.value());
+
+    aggregator.add(t0.add(Duration::from_secs_f64(13.0)), 3.0);
+    assert_eq!(Some(3.0), aggregator.value());
+}
+
+#[test]
+fn test_max2() {
+    use std::ops::Add;
+
+    let mut operations = AggregateOperations::new();
+    let t0 = TimePoint::now();
+
+    let x = ValueId(0);
+    let max_x = operations.add_max(x, TimeInterval::Seconds(10.0));
+    let mut values = FnvHashMap::default();
+
+    values.insert(x, 2.0);
+    operations.handle_values(t0, &values);
+    assert_eq!(Some(2.0), operations.max(&max_x));
+
+    values.insert(x, 4.0);
+    operations.handle_values(t0.add(Duration::from_secs_f64(2.0)), &values);
+    assert_eq!(Some(4.0), operations.max(&max_x));
+
+    values.insert(x, 3.0);
+    operations.handle_values(t0.add(Duration::from_secs_f64(3.0)), &values);
+    assert_eq!(Some(4.0), operations.max(&max_x));
+
+    values.insert(x, 3.0);
+    operations.handle_values(t0.add(Duration::from_secs_f64(13.0)), &values);
+    assert_eq!(Some(3.0), operations.max(&max_x));
 }

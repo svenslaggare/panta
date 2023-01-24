@@ -153,6 +153,26 @@ pub fn transform_into_event_expression(tree: ParserExpressionTree) -> Result<Eve
                         }
                     )
                 }
+                "min" => {
+                    assert_num_arguments(tree.location, 2, arguments.len())?;
+
+                    Ok(
+                        EventExpression::Min {
+                            value: transform_into_value_expression(arguments.remove(0))?,
+                            interval: transform_into_time_interval(arguments.remove(0))?
+                        }
+                    )
+                }
+                "max" => {
+                    assert_num_arguments(tree.location, 2, arguments.len())?;
+
+                    Ok(
+                        EventExpression::Max {
+                            value: transform_into_value_expression(arguments.remove(0))?,
+                            interval: transform_into_time_interval(arguments.remove(0))?
+                        }
+                    )
+                }
                 _ => {
                     let mut transformed_arguments = Vec::new();
                     for argument in arguments {

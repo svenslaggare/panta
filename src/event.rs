@@ -73,6 +73,8 @@ pub enum EventExpression {
     StandardDeviation { value: ValueExpression, interval: TimeInterval },
     Covariance { left: ValueExpression, right: ValueExpression, interval: TimeInterval },
     Correlation { left: ValueExpression, right: ValueExpression, interval: TimeInterval },
+    Min { value: ValueExpression, interval: TimeInterval },
+    Max { value: ValueExpression, interval: TimeInterval },
     BinaryArithmetic { operator: BinaryArithmeticOperator, left: Box<EventExpression>, right: Box<EventExpression> },
     UnaryArithmetic { operator: UnaryArithmeticOperator, operand: Box<EventExpression> },
     Function { function: Function, arguments: Vec<EventExpression> }

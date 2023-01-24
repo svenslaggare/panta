@@ -1,7 +1,7 @@
 use float_ord::FloatOrd;
 use fnv::{FnvHashMap, FnvHashSet};
 
-use crate::aggregator::{AggregateOperations, AverageAggregate, CorrelationAggregate, CovarianceAggregate, VarianceAggregate};
+use crate::aggregator::{AggregateOperations, AverageAggregate, CorrelationAggregate, CovarianceAggregate, MaxAggregate, MinAggregate, VarianceAggregate};
 use crate::event::{BinaryArithmeticOperator, BoolOperator, Event, EventExpression, EventId, EventOutputName, EventQuery, Function, UnaryArithmeticOperator, ValueExpression};
 use crate::metrics::{MetricDefinitions, MetricValues};
 
@@ -248,6 +248,16 @@ impl EventEngine {
                 let aggregate = self.aggregators.add_correlation(left_value_id, right_value_id, *interval);
                 Ok(CompiledEventExpression::Correlation(aggregate))
             }
+            EventExpression::Min { value, interval } => {
+                let value_id = self.compile_value(context, value, value_generators)?;
+                let aggregate = self.aggregators.add_min(value_id, *interval);
+                Ok(CompiledEventExpression::Min(aggregate))
+            }
+            EventExpression::Max { value, interval } => {
+                let value_id = self.compile_value(context, value, value_generators)?;
+                let aggregate = self.aggregators.add_max(value_id, *interval);
+                Ok(CompiledEventExpression::Max(aggregate))
+            }
             EventExpression::BinaryArithmetic { operator, left, right } => {
                 let left = self.compile_expression(context, value_generators, left)?;
                 let right = self.compile_expression(context, value_generators, right)?;
@@ -410,6 +420,8 @@ impl EventEngine {
             CompiledEventExpression::StandardDeviation(aggregate) => Some(Value::Float(self.aggregators.standard_deviation(aggregate)?)),
             CompiledEventExpression::Covariance(aggregate) => Some(Value::Float(self.aggregators.covariance(aggregate)?)),
             CompiledEventExpression::Correlation(aggregate) => Some(Value::Float(self.aggregators.correlation(aggregate)?)),
+            CompiledEventExpression::Min(aggregate) => Some(Value::Float(self.aggregators.min(aggregate)?)),
+            CompiledEventExpression::Max(aggregate) => Some(Value::Float(self.aggregators.max(aggregate)?)),
             CompiledEventExpression::BinaryArithmetic { operator, left, right } => {
                 let left = self.evaluate_expression(values, left)?.float()?;
                 let right = self.evaluate_expression(values, right)?.float()?;
@@ -469,6 +481,8 @@ impl EventEngine {
             CompiledEventExpression::StandardDeviation(aggregate) => Some(format!("std({})", self.aggregators.standard_deviation(aggregate)?)),
             CompiledEventExpression::Covariance(aggregate) => Some(format!("cov({})", self.aggregators.covariance(aggregate)?)),
             CompiledEventExpression::Correlation(aggregate) => Some(format!("corr({})", self.aggregators.correlation(aggregate)?)),
+            CompiledEventExpression::Min(aggregate) => Some(format!("min({})", self.aggregators.min(aggregate)?)),
+            CompiledEventExpression::Max(aggregate) => Some(format!("max({})", self.aggregators.max(aggregate)?)),
             CompiledEventExpression::BinaryArithmetic { operator, left, right } => {
                 let left = self.expression_to_string(values, left)?;
                 let right = self.expression_to_string(values, right)?;
@@ -537,6 +551,8 @@ enum CompiledEventExpression {
     StandardDeviation(VarianceAggregate),
     Covariance(CovarianceAggregate),
     Correlation(CorrelationAggregate),
+    Min(MinAggregate),
+    Max(MaxAggregate),
     BinaryArithmetic { operator: BinaryArithmeticOperator, left: Box<CompiledEventExpression>, right: Box<CompiledEventExpression> },
     UnaryArithmetic { operator: UnaryArithmeticOperator, operand: Box<CompiledEventExpression> },
     Function { function: Function, arguments: Vec<CompiledEventExpression> }
