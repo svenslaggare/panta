@@ -27,6 +27,22 @@ pub struct CollectorsManager {
     custom_metrics_receiver: UnboundedReceiver<CustomMetric>
 }
 
+macro_rules! collect_async {
+    ($collector:expr, $metric_time:expr) => {
+        {
+           let moved_collector = $collector;
+           task::spawn_local(async move {
+                let mut values = MetricValues::new(TimeInterval::Seconds(0.0));
+                let result = moved_collector.borrow_mut().collect(
+                    $metric_time,
+                    &mut values
+                ).await;
+                result.map(|_| values)
+            })
+        }
+    };
+}
+
 impl CollectorsManager {
     pub async fn new(config: &Config,
                      metric_definitions: &mut MetricDefinitions) -> EventResult<CollectorsManager> {
@@ -89,49 +105,19 @@ impl CollectorsManager {
                          metric_time: TimePoint,
                          values: &mut MetricValues) -> EventResult<()> {
         let rabbitmq_result = if let Some(rabbitmq_metrics_collector) = self.rabbitmq_metrics_collector.as_ref() {
-            let rabbitmq_metrics_collector_clone = rabbitmq_metrics_collector.clone();
-            let rabbitmq_result = task::spawn_local(async move {
-                let mut rabbitmq_values = MetricValues::new(TimeInterval::Seconds(0.0));
-                let rabbitmq_result = rabbitmq_metrics_collector_clone.borrow_mut().collect(
-                    metric_time,
-                    &mut rabbitmq_values
-                ).await;
-                rabbitmq_result.map(|_| rabbitmq_values)
-            });
-
-            Some(rabbitmq_result)
+            Some(collect_async!(rabbitmq_metrics_collector.clone(), metric_time))
         } else {
             None
         };
 
         let docker_result = if let Some(docker_metrics_collector) = self.docker_metrics_collector.as_ref() {
-            let docker_metrics_collector_clone = docker_metrics_collector.clone();
-            let docker_result = task::spawn_local(async move {
-                let mut docker_values = MetricValues::new(TimeInterval::Seconds(0.0));
-                let docker_result = docker_metrics_collector_clone.borrow_mut().collect(
-                    metric_time,
-                    &mut docker_values
-                ).await;
-                docker_result.map(|_| docker_values)
-            });
-
-            Some(docker_result)
+            Some(collect_async!(docker_metrics_collector.clone(), metric_time))
         } else {
             None
         };
 
         let postgres_result = if let Some(postgres_metrics_collector) = self.postgres_metrics_collector.as_ref() {
-            let postgres_metrics_collector_clone = postgres_metrics_collector.clone();
-            let postgres_result = task::spawn_local(async move {
-                let mut postgres_values = MetricValues::new(TimeInterval::Seconds(0.0));
-                let postgres_result = postgres_metrics_collector_clone.borrow_mut().collect(
-                    metric_time,
-                    &mut postgres_values
-                ).await;
-                postgres_result.map(|_| postgres_values)
-            });
-
-            Some(postgres_result)
+            Some(collect_async!(postgres_metrics_collector.clone(), metric_time))
         } else {
             None
         };
