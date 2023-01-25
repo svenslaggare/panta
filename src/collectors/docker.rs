@@ -9,6 +9,7 @@ use bollard::models::ContainerSummary;
 use log::debug;
 
 use crate::collectors::system::{CpuUsageCollector, MemoryUsageCollector};
+use crate::config::DockerMetricsConfig;
 use crate::metrics::{MetricDefinitions, MetricValues};
 use crate::model::{EventError, EventResult, MetricId, MetricName, TimePoint};
 
@@ -19,7 +20,7 @@ pub struct DockerStatsCollector {
 }
 
 impl DockerStatsCollector {
-    pub async fn new(metric_definitions: &mut MetricDefinitions) -> EventResult<DockerStatsCollector> {
+    pub async fn new(_: &DockerMetricsConfig, metric_definitions: &mut MetricDefinitions) -> EventResult<DockerStatsCollector> {
         let mut collector = DockerStatsCollector {
             docker: Docker::connect_with_socket_defaults()?,
             system_stats: DockerStatsCollector::get_system_stats()?,
@@ -175,7 +176,10 @@ async fn test_collect1() {
     use crate::model::TimeInterval;
 
     let mut metric_definitions = MetricDefinitions::new();
-    let mut docker_stats_collector = DockerStatsCollector::new(&mut metric_definitions).await.unwrap();
+    let mut docker_stats_collector = DockerStatsCollector::new(
+        &DockerMetricsConfig::default(),
+        &mut metric_definitions
+    ).await.unwrap();
 
     tokio::time::sleep(std::time::Duration::from_secs_f64(0.25)).await;
 

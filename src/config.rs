@@ -8,6 +8,7 @@ use crate::model::{EventError, EventResult};
 pub struct Config {
     pub log_level: log::LevelFilter,
     pub custom_metrics: CustomMetricsConfig,
+    pub docker: Option<DockerMetricsConfig>,
     pub rabbitmq: Option<RabbitMQMetricsConfig>,
     pub postgres: Option<PostgresMetricsConfig>,
     pub rediscover_rate: f64
@@ -25,6 +26,7 @@ impl Default for Config {
         Config {
             log_level: log::LevelFilter::Info,
             custom_metrics: CustomMetricsConfig::default(),
+            docker: Some(DockerMetricsConfig::default()),
             rabbitmq: Some(RabbitMQMetricsConfig::default()),
             postgres: None,
             rediscover_rate: 0.1
@@ -42,6 +44,21 @@ impl Default for CustomMetricsConfig {
     fn default() -> Self {
         CustomMetricsConfig {
             socket_path: Path::new("panta.sock").to_owned()
+        }
+    }
+}
+
+
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct DockerMetricsConfig {
+
+}
+
+impl Default for DockerMetricsConfig {
+    fn default() -> Self {
+        DockerMetricsConfig {
+
         }
     }
 }
