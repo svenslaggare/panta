@@ -1,7 +1,7 @@
 sampling_rate: 5.0
 events:
   - name: "cpu_usage"
-    independent_metric: "system.cpu_usage:all"
+    independent_metric: "system.cpu_usage"
     dependent_metric:
       - "system.used_memory_bytes"
       - "system.disk.read_bytes.rate:sda2"

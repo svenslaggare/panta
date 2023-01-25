@@ -51,7 +51,12 @@ impl SystemMetricCollector for CpuUsageCollector {
         let mut prev_values = FnvHashMap::default();
         let content = CpuUsageCollector::get_cpu_content()?;
         for (core_name, (total, idle)) in CpuUsageCollector::get_cpu_values(&content) {
-            let metric_id = metric_definitions.define(MetricName::sub("system.cpu_usage", &core_name));
+            let metric_id = if core_name != "all" {
+                 metric_definitions.define(MetricName::sub("system.cpu_usage_per_cpu", &core_name))
+            } else {
+                metric_definitions.define(MetricName::all("system.cpu_usage"))
+            };
+
             prev_values.insert(core_name.to_owned(), (metric_id, total, idle));
         }
 
@@ -568,7 +573,8 @@ fn test_cpu_collector1() {
         println!("{}: {}", metric_definitions.get_specific_name(metric).unwrap(), value)
     }
 
-    assert_ne!(Some(&0.0), metrics.get(&metric_definitions.get_specific_id(&MetricName::sub("system.cpu_usage", "all")).unwrap()));
+    assert_ne!(Some(&0.0), metrics.get(&metric_definitions.get_specific_id(&MetricName::all("system.cpu_usage")).unwrap()));
+    assert_ne!(Some(&0.0), metrics.get(&metric_definitions.get_specific_id(&MetricName::sub("system.cpu_usage_per_cpu", "core0")).unwrap()));
 }
 
 #[test]
