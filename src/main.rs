@@ -103,7 +103,7 @@ fn setup_logger(config: &Config) -> Result<(), fern::InitError> {
         .format(|out, message, record| {
             out.finish(format_args!(
                 "{}[{}][{}] {}",
-                chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
+                chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S.%f]"),
                 record.target(),
                 record.level(),
                 message

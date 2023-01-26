@@ -144,7 +144,7 @@ impl EventOutputHandler for TextFileEventOutputHandler {
     fn handle_output(&mut self, event_id: &EventId, name: &str, outputs: &Vec<(String, Value)>) -> EventResult<()> {
         let line = format!(
             "{} Event generated for {} (id: {}), {}\n",
-            chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S]"),
+            chrono::Local::now().format("[%Y-%m-%d][%H:%M:%S.%f]"),
             name,
             event_id,
             join_event_output(outputs)
