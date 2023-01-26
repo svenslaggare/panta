@@ -143,6 +143,16 @@ impl MetricValues {
     pub fn clear_old(&mut self, time: TimePoint) {
         self.values.retain(|_, (value_time, _)| time.duration_since(*value_time) < self.max_keep)
     }
+
+    pub fn serialize(&self, metric_definitions: &MetricDefinitions) -> FnvHashMap<MetricName, f64> {
+        FnvHashMap::from_iter(
+            self.values
+                .iter()
+                .map(|(metric_id, (_, value))| {
+                    (metric_definitions.get_specific_name(*metric_id).unwrap().clone(), *value)
+                })
+        )
+    }
 }
 
 #[test]

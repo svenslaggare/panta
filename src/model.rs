@@ -3,7 +3,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use serde::de::{Error, Visitor};
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::event::Event;
 use crate::event_output::EventOutputDefinition;
@@ -107,6 +107,12 @@ impl<'de> Visitor<'de> for MetricNameVisitor {
 impl<'de> Deserialize<'de> for MetricName {
     fn deserialize<D>(deserializer: D) -> Result<MetricName, D::Error> where D: Deserializer<'de> {
         deserializer.deserialize_string(MetricNameVisitor)
+    }
+}
+
+impl Serialize for MetricName {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        serializer.serialize_str(&self.to_string())
     }
 }
 

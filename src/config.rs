@@ -11,7 +11,8 @@ pub struct Config {
     pub docker: Option<DockerMetricsConfig>,
     pub rabbitmq: Option<RabbitMQMetricsConfig>,
     pub postgres: Option<PostgresMetricsConfig>,
-    pub rediscover_rate: f64
+    pub rediscover_rate: f64,
+    pub watch_socket_path: PathBuf
 }
 
 impl Config {
@@ -29,7 +30,8 @@ impl Default for Config {
             docker: Some(DockerMetricsConfig::default()),
             rabbitmq: Some(RabbitMQMetricsConfig::default()),
             postgres: None,
-            rediscover_rate: 0.1
+            rediscover_rate: 0.1,
+            watch_socket_path: Path::new("watch_panta.sock").to_owned()
         }
     }
 }
